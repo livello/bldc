@@ -125,6 +125,11 @@ void pas_event_handler(void) {
 	uint8_t PAS1_level = palReadPad(HW_PAS1_PORT, HW_PAS1_PIN);
 	uint8_t PAS2_level = palReadPad(HW_PAS2_PORT, HW_PAS2_PIN);
 
+    inactivity_time += 1.0 / (float)config.update_rate_hz;
+    if(inactivity_time > max_pulse_period) {
+        pedal_rpm = 0.0;
+    }
+
 	new_state = PAS2_level * 2 + PAS1_level;
     if(old_state==new_state)
         return;
@@ -155,14 +160,8 @@ void pas_event_handler(void) {
 		pedal_rpm *= (direction_conf * direction_qem);
 		inactivity_time = 0.0;
 	}
-	else {
-		inactivity_time += 1.0 / (float)config.update_rate_hz;
 
-		//if no pedal activity, set RPM as zero
-		if(inactivity_time > max_pulse_period) {
-			pedal_rpm = 0.0;
-		}
-	}
+
 #endif
 }
 
