@@ -121,12 +121,16 @@ void app_set_configuration(app_configuration *conf) {
 		break;
 
 	case APP_PAS:
-		app_pas_start(true);
+        app_pas_start(true);
+        hw_stop_i2c();
+        app_uartcomm_start();
 		break;
 
 	case APP_ADC_PAS:
-		app_adc_start(true);
-		app_pas_start(false);
+        app_pas_start(true);
+        hw_stop_i2c();
+        app_uartcomm_start();
+		app_adc_start(false);
 		break;
 
 	case APP_NRF:

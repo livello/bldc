@@ -232,7 +232,8 @@ MCU  = cortex-m4
 
 #TRGT = arm-elf-
 #TRGT = /home/benjamin/Nextcloud/appimage/gcc-arm-none-eabi-7-2018-q2-update/bin/arm-none-eabi-
-TRGT = arm-none-eabi-
+TRGT = /home/livello/EmbeddedArm/gcc-arm-none-eabi-7-2018-q2-update/bin/arm-none-eabi-
+#TRGT = arm-none-eabi-
 CC   = $(TRGT)gcc
 CPPC = $(TRGT)g++
 # Enable loading with g++ only if you need C++ runtime support.

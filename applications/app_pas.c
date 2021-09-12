@@ -52,6 +52,8 @@ static volatile bool primary_output = false;
 static volatile bool stop_now = true;
 static volatile bool is_running = false;
 
+static uint8_t change_count = 0;
+
 void app_pas_configure(pas_config *conf) {
 	config = *conf;
 	ms_without_power = 0.0;
@@ -108,6 +110,11 @@ float app_pas_get_current_target_rel(void) {
 void pas_event_handler(void) {
 #ifdef HW_PAS1_PORT
 	const int8_t QEM[] = {0,-1,1,2,1,0,2,-1,-1,2,0,1,2,1,-1,0}; // Quadrature Encoder Matrix
+    const int8_t KNOBDIR [] = {
+            0, -1, 1, 0,
+            1, 0, 0, -1,
+            -1, 0, 0, 1,
+            0, 1, -1, 0};
 	float direction_qem;
 	uint8_t new_state;
 	static uint8_t old_state = 0;
@@ -119,13 +126,23 @@ void pas_event_handler(void) {
 	uint8_t PAS2_level = palReadPad(HW_PAS2_PORT, HW_PAS2_PIN);
 
 	new_state = PAS2_level * 2 + PAS1_level;
+    if(old_state==new_state)
+        return;
+
 	direction_qem = (float) QEM[old_state * 4 + new_state];
+	uint8_t my_direction = direction_conf * KNOBDIR[old_state * 4 + new_state];
+
 	old_state = new_state;
+	if(my_direction>0)
+	    change_count++;
+	else
+	    change_count=0;
 
 	const float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 
 	// sensors are poorly placed, so use only one rising edge as reference
-	if(new_state == 3) {
+	if(change_count >= 4 ) {
+	    change_count=0;
 		float period = (timestamp - old_timestamp) * (float)config.magnets;
 		old_timestamp = timestamp;
 
