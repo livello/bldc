@@ -31,13 +31,14 @@
 #include <math.h>
 
 // Settings
-#define PEDAL_INPUT_TIMEOUT				0.2
-#define MIN_MS_WITHOUT_POWER			500
-#define FILTER_SAMPLES					5
-#define RPM_FILTER_SAMPLES				8
+#define PEDAL_INPUT_TIMEOUT                0.2
+#define MIN_MS_WITHOUT_POWER            500
+#define FILTER_SAMPLES                    5
+#define RPM_FILTER_SAMPLES                8
 
 // Threads
 static THD_FUNCTION(pas_thread, arg);
+
 static THD_WORKING_AREA(pas_thread_wa, 1024);
 
 // Private variables
@@ -52,6 +53,8 @@ static volatile bool primary_output = false;
 static volatile bool stop_now = true;
 static volatile bool is_running = false;
 
+static uint8_t change_count = 0;
+
 void app_pas_configure(pas_config *conf) {
 	config = *conf;
 	ms_without_power = 0.0;
@@ -63,8 +66,8 @@ void app_pas_configure(pas_config *conf) {
 	// if pedal spins at x3 the end rpm, assume its beyond limits
 	min_pedal_period = 1.0 / ((config.pedal_rpm_end * 3.0 / 60.0));
 
-	if (config.invert_pedal_direction == true )
-		direction_conf= -1.0;
+	if (config.invert_pedal_direction == true)
+		direction_conf = -1.0;
 	else
 		direction_conf = 1.0;
 }
@@ -95,8 +98,7 @@ void app_pas_stop(void) {
 
 	if (primary_output == true) {
 		mc_interface_set_current_rel(0.0);
-	}
-	else {
+	} else {
 		output_current_rel = 0.0;
 	}
 }
@@ -107,7 +109,12 @@ float app_pas_get_current_target_rel(void) {
 
 void pas_event_handler(void) {
 #ifdef HW_PAS1_PORT
-	const int8_t QEM[] = {0,-1,1,2,1,0,2,-1,-1,2,0,1,2,1,-1,0}; // Quadrature Encoder Matrix
+	const int8_t QEM[] = {0, -1, 1, 2, 1, 0, 2, -1, -1, 2, 0, 1, 2, 1, -1, 0}; // Quadrature Encoder Matrix
+	const int8_t KNOBDIR[] = {
+			0, -1, 1, 0,
+			1, 0, 0, -1,
+			-1, 0, 0, 1,
+			0, 1, -1, 0};
 	float direction_qem;
 	uint8_t new_state;
 	static uint8_t old_state = 0;
@@ -118,39 +125,48 @@ void pas_event_handler(void) {
 	uint8_t PAS1_level = palReadPad(HW_PAS1_PORT, HW_PAS1_PIN);
 	uint8_t PAS2_level = palReadPad(HW_PAS2_PORT, HW_PAS2_PIN);
 
-	new_state = PAS2_level * 2 + PAS1_level;
-	direction_qem = (float) QEM[old_state * 4 + new_state];
-	old_state = new_state;
+	inactivity_time += 1.0 / (float) config.update_rate_hz;
+	if (inactivity_time > max_pulse_period) {
+		pedal_rpm = 0.0;
+	}
 
-	const float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
+	new_state = PAS2_level * 2 + PAS1_level;
+	if (old_state == new_state)
+		return;
+
+	direction_qem = (float) QEM[old_state * 4 + new_state];
+	uint8_t my_direction = direction_conf * KNOBDIR[old_state * 4 + new_state];
+
+	old_state = new_state;
+	if (my_direction > 0)
+		change_count++;
+	else
+		change_count = 0;
+
+	const float timestamp = (float) chVTGetSystemTimeX() / (float) CH_CFG_ST_FREQUENCY;
 
 	// sensors are poorly placed, so use only one rising edge as reference
-	if(new_state == 3) {
-		float period = (timestamp - old_timestamp) * (float)config.magnets;
+	if (change_count >= 4) {
+		change_count = 0;
+		float period = (timestamp - old_timestamp) * (float) config.magnets;
 		old_timestamp = timestamp;
 
 		UTILS_LP_FAST(period_filtered, period, 1.0);
 
-		if(period_filtered < min_pedal_period) { //can't be that short, abort
+		if (period_filtered < min_pedal_period) { //can't be that short, abort
 			return;
 		}
 		pedal_rpm = 60.0 / period_filtered;
 		pedal_rpm *= (direction_conf * direction_qem);
 		inactivity_time = 0.0;
 	}
-	else {
-		inactivity_time += 1.0 / (float)config.update_rate_hz;
 
-		//if no pedal activity, set RPM as zero
-		if(inactivity_time > max_pulse_period) {
-			pedal_rpm = 0.0;
-		}
-	}
+
 #endif
 }
 
 static THD_FUNCTION(pas_thread, arg) {
-	(void)arg;
+	(void) arg;
 
 	float output = 0;
 	chRegSetThreadName("APP_PAS");
@@ -162,7 +178,7 @@ static THD_FUNCTION(pas_thread, arg) {
 
 	is_running = true;
 
-	for(;;) {
+	for (;;) {
 		// Sleep for a time according to the specified rate
 		systime_t sleep_time = CH_CFG_ST_FREQUENCY / config.update_rate_hz;
 
@@ -177,7 +193,7 @@ static THD_FUNCTION(pas_thread, arg) {
 			return;
 		}
 
-		pas_event_handler();	// this should happen inside an ISR instead of being polled
+		pas_event_handler();    // this should happen inside an ISR instead of being polled
 
 		// For safe start when fault codes occur
 		if (mc_interface_get_fault() != FAULT_CODE_NONE) {
@@ -197,7 +213,8 @@ static THD_FUNCTION(pas_thread, arg) {
 				// NOTE: If the limits are the same a numerical instability is approached, so in that case
 				// just use on/off control (which is what setting the limits to the same value essentially means).
 				if (config.pedal_rpm_end > (config.pedal_rpm_start + 1.0)) {
-					output = utils_map(pedal_rpm, config.pedal_rpm_start, config.pedal_rpm_end, 0.0, config.current_scaling);
+					output = utils_map(pedal_rpm, config.pedal_rpm_start, config.pedal_rpm_end, 0.0,
+									   config.current_scaling);
 					utils_truncate_number(&output, 0.0, config.current_scaling);
 				} else {
 					if (pedal_rpm > config.pedal_rpm_end) {
@@ -220,7 +237,7 @@ static THD_FUNCTION(pas_thread, arg) {
 		float ramp_time = fabsf(output) > fabsf(output_ramp) ? config.ramp_time_pos : config.ramp_time_neg;
 
 		if (ramp_time > 0.01) {
-			const float ramp_step = (float)ST2MS(chVTTimeElapsedSinceX(last_time)) / (ramp_time * 1000.0);
+			const float ramp_step = (float) ST2MS(chVTTimeElapsedSinceX(last_time)) / (ramp_time * 1000.0);
 			utils_step_towards(&output_ramp, output, ramp_step);
 			utils_truncate_number(&output_ramp, 0.0, config.current_scaling);
 
@@ -229,7 +246,7 @@ static THD_FUNCTION(pas_thread, arg) {
 		}
 
 		if (output < 0.001) {
-			ms_without_power += (1000.0 * (float)sleep_time) / (float)CH_CFG_ST_FREQUENCY;
+			ms_without_power += (1000.0 * (float) sleep_time) / (float) CH_CFG_ST_FREQUENCY;
 		}
 
 		// Safe start is enabled if the output has not been zero for long enough
@@ -248,8 +265,7 @@ static THD_FUNCTION(pas_thread, arg) {
 
 		if (primary_output == true) {
 			mc_interface_set_current_rel(output);
-		}
-		else {
+		} else {
 			output_current_rel = output;
 		}
 	}
