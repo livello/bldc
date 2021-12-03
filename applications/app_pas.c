@@ -31,14 +31,15 @@
 #include <math.h>
 
 // Settings
-#define PEDAL_INPUT_TIMEOUT				0.2
-#define MIN_MS_WITHOUT_POWER			500
-#define FILTER_SAMPLES					5
-#define RPM_FILTER_SAMPLES				8
+#define PEDAL_INPUT_TIMEOUT                0.2
+#define MIN_MS_WITHOUT_POWER            500
+#define FILTER_SAMPLES                    5
+#define RPM_FILTER_SAMPLES                8
 
 // Threads
-static THD_FUNCTION(pas_thread, arg);
-static THD_WORKING_AREA(pas_thread_wa, 1024);
+static THD_FUNCTION(pas_thread,arg);
+
+static THD_WORKING_AREA(pas_thread_wa,1024);
 
 // Private variables
 static volatile pas_config config;
@@ -52,6 +53,8 @@ static volatile bool primary_output = false;
 static volatile bool stop_now = true;
 static volatile bool is_running = false;
 
+static uint8_t change_count = 0;
+
 void app_pas_configure(pas_config *conf) {
 	config = *conf;
 	ms_without_power = 0.0;
@@ -63,10 +66,11 @@ void app_pas_configure(pas_config *conf) {
 	// if pedal spins at x3 the end rpm, assume its beyond limits
 	min_pedal_period = 1.0 / ((config.pedal_rpm_end * 3.0 / 60.0));
 
-	if (config.invert_pedal_direction == true )
-		direction_conf= -1.0;
-	else
+	if (config.invert_pedal_direction == true) {
+		direction_conf = -1.0;
+	} else {
 		direction_conf = 1.0;
+	}
 }
 
 /**
@@ -78,7 +82,7 @@ void app_pas_configure(pas_config *conf) {
  */
 void app_pas_start(bool is_primary_output) {
 	stop_now = false;
-	chThdCreateStatic(pas_thread_wa, sizeof(pas_thread_wa), NORMALPRIO, pas_thread, NULL);
+	chThdCreateStatic(pas_thread_wa,sizeof(pas_thread_wa),NORMALPRIO,pas_thread,NULL);
 
 	primary_output = is_primary_output;
 }
@@ -89,14 +93,13 @@ bool app_pas_is_running(void) {
 
 void app_pas_stop(void) {
 	stop_now = true;
-	while (is_running) {
+	while(is_running) {
 		chThdSleepMilliseconds(1);
 	}
 
 	if (primary_output == true) {
 		mc_interface_set_current_rel(0.0);
-	}
-	else {
+	} else {
 		output_current_rel = 0.0;
 	}
 }
@@ -108,6 +111,11 @@ float app_pas_get_current_target_rel(void) {
 void pas_event_handler(void) {
 #ifdef HW_PAS1_PORT
 	const int8_t QEM[] = {0,-1,1,2,1,0,2,-1,-1,2,0,1,2,1,-1,0}; // Quadrature Encoder Matrix
+	const int8_t KNOBDIR[] = {
+			0,-1,1,0,
+			1,0,0,-1,
+			-1,0,0,1,
+			0,1,-1,0};
 	float direction_qem;
 	uint8_t new_state;
 	static uint8_t old_state = 0;
@@ -118,34 +126,45 @@ void pas_event_handler(void) {
 	uint8_t PAS1_level = palReadPad(HW_PAS1_PORT, HW_PAS1_PIN);
 	uint8_t PAS2_level = palReadPad(HW_PAS2_PORT, HW_PAS2_PIN);
 
+	inactivity_time += 1.0 / (float) config.update_rate_hz;
+	if (inactivity_time > max_pulse_period) {
+		pedal_rpm = 0.0;
+	}
+
 	new_state = PAS2_level * 2 + PAS1_level;
+	if (old_state == new_state) {
+		return;
+	}
+
 	direction_qem = (float) QEM[old_state * 4 + new_state];
+	uint8_t current_direction = direction_conf * KNOBDIR[old_state * 4 + new_state];
+
 	old_state = new_state;
+	if (current_direction > 0) {
+		change_count++;
+	} else {
+		change_count = 0;
+	}
 
 	const float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 
 	// sensors are poorly placed, so use only one rising edge as reference
-	if(new_state == 3) {
-		float period = (timestamp - old_timestamp) * (float)config.magnets;
+	if (change_count >= 4) {
+		change_count = 0;
+		float period = (timestamp - old_timestamp) * (float) config.magnets;
 		old_timestamp = timestamp;
 
 		UTILS_LP_FAST(period_filtered, period, 1.0);
 
-		if(period_filtered < min_pedal_period) { //can't be that short, abort
+		if (period_filtered < min_pedal_period) { //can't be that short, abort
 			return;
 		}
 		pedal_rpm = 60.0 / period_filtered;
 		pedal_rpm *= (direction_conf * direction_qem);
 		inactivity_time = 0.0;
 	}
-	else {
-		inactivity_time += 1.0 / (float)config.update_rate_hz;
 
-		//if no pedal activity, set RPM as zero
-		if(inactivity_time > max_pulse_period) {
-			pedal_rpm = 0.0;
-		}
-	}
+
 #endif
 }
 
@@ -248,8 +267,7 @@ static THD_FUNCTION(pas_thread, arg) {
 
 		if (primary_output == true) {
 			mc_interface_set_current_rel(output);
-		}
-		else {
+		} else {
 			output_current_rel = output;
 		}
 	}
