@@ -138,25 +138,24 @@ void pas_event_handler(void) {
 	uint8_t my_direction = direction_conf * KNOBDIR[old_state * 4 + new_state];
 
 	old_state = new_state;
-	if(my_direction>0)
-	    change_count++;
-	else
-	    change_count=0;
+	if (my_direction > 0) {
+		change_count++;
+	} else {
+		change_count = 0;
+	}
 
 	const float timestamp = (float)chVTGetSystemTimeX() / (float)CH_CFG_ST_FREQUENCY;
 
 	// sensors are poorly placed, so use only one rising edge as reference
-	if(change_count >= 4 ) {
-	    change_count=0;
-		float period = (timestamp - old_timestamp) * (float)config.magnets;
+	if (change_count >= 4) {
+		change_count = 0;
+		float period = (timestamp - old_timestamp) * (float) config.magnets;
 		old_timestamp = timestamp;
 
-		UTILS_LP_FAST(period_filtered, period, 1.0);
-
-		if(period_filtered < min_pedal_period) { //can't be that short, abort
+		if (period < min_pedal_period) { //can't be that short, abort
 			return;
 		}
-		pedal_rpm = 60.0 / period_filtered;
+		UTILS_LP_FAST(pedal_rpm, 60.0 / period, 0.33);
 		pedal_rpm *= (direction_conf * direction_qem);
 		inactivity_time = 0.0;
 	}
