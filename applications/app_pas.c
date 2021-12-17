@@ -152,10 +152,12 @@ void pas_event_handler(void) {
 		float period = (timestamp - old_timestamp) * (float) config.magnets;
 		old_timestamp = timestamp;
 
-		if (period < min_pedal_period) { //can't be that short, abort
+		UTILS_LP_FAST(period_filtered, period, 1.0);
+
+		if(period_filtered < min_pedal_period) { //can't be that short, abort
 			return;
 		}
-		UTILS_LP_FAST(pedal_rpm, 60.0 / period, 0.33);
+		pedal_rpm = 60.0 / period_filtered;
 		pedal_rpm *= (direction_conf * direction_qem);
 		inactivity_time = 0.0;
 	}
