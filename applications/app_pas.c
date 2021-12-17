@@ -161,8 +161,6 @@ void pas_event_handler(void) {
 		pedal_rpm *= (direction_conf * direction_qem);
 		inactivity_time = 0.0;
 	}
-
-
 #endif
 }
 
