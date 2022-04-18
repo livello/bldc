@@ -17,17 +17,22 @@
     along with this program.  If not, see <http://www.gnu.org/licenses/>.
     */
 
-#ifndef HW_75_300_H_
-#define HW_75_300_H_
+#ifndef HW_RD2_H_
+#define HW_RD2_H_
 
 #define HW_NAME					"RD2"
 
 // HW properties
 #define HW_HAS_3_SHUNTS
 #define HW_HAS_PHASE_SHUNTS
-//#define HW_HAS_PHASE_FILTERS
 
-// Macros
+// CAN Bus
+#define APPCONF_CONTROLLER_ID	0x6A
+#define APPCONF_CAN_BAUD_RATE	CAN_BAUD_125K
+
+#define APPCONF_CHUK_CTRL_TYPE	CHUK_CTRL_TYPE_CURRENT
+
+// General Macros
 #define LED_GREEN_GPIO			GPIOB
 #define LED_GREEN_PIN			5
 #define LED_RED_GPIO			GPIOB
@@ -108,21 +113,13 @@
 
 // NTC Termistors
 #define NTC_RES(adc_val)		((4095.0 * 10000.0) / adc_val - 10000.0)
-#define NTC_TEMP(adc_ind)		hw75_300_get_temp()
-
-#define NTC_RES_MOTOR(adc_val)	(10000.0 / ((4095.0 / (float)adc_val) - 1.0)) // Motor temp sensor on low side
-
-#ifdef HW75_300_VEDDER_FIRST_PCB
-#define NTC_TEMP_MOTOR(beta)	(-20)
-#else
+#define NTC_TEMP(adc_ind)		hw_rd2_get_temp()
+// Motor temp sensor on low side
+#define NTC_RES_MOTOR(adc_val)	(10000.0 / ((4095.0 / (float)adc_val) - 1.0))
 #define NTC_TEMP_MOTOR(beta)	(1.0 / ((logf(NTC_RES_MOTOR(ADC_Value[ADC_IND_TEMP_MOTOR]) / 10000.0) / beta) + (1.0 / 298.15)) - 273.15)
-#endif
-
-#ifndef HW75_300_VEDDER_FIRST_PCB
 #define NTC_TEMP_MOS1()			(1.0 / ((logf(NTC_RES(ADC_Value[ADC_IND_TEMP_MOS]) / 10000.0) / 3380.0) + (1.0 / 298.15)) - 273.15)
 #define NTC_TEMP_MOS2()			(1.0 / ((logf(NTC_RES(ADC_Value[ADC_IND_TEMP_MOS_2]) / 10000.0) / 3380.0) + (1.0 / 298.15)) - 273.15)
 #define NTC_TEMP_MOS3()			(1.0 / ((logf(NTC_RES(ADC_Value[ADC_IND_TEMP_MOS_3]) / 10000.0) / 3380.0) + (1.0 / 298.15)) - 273.15)
-#endif
 
 // Voltage on ADC channel
 #define ADC_VOLTS(ch)			((float)ADC_Value[ch] / 4096.0 * V_REG)
@@ -217,99 +214,62 @@
 #define ADC_V_L3				ADC_Value[ADC_IND_SENS3]
 #define ADC_V_ZERO				(ADC_Value[ADC_IND_VIN_SENS] / 2)
 
-// Macros
 #define READ_HALL1()			palReadPad(HW_HALL_ENC_GPIO1, HW_HALL_ENC_PIN1)
 #define READ_HALL2()			palReadPad(HW_HALL_ENC_GPIO2, HW_HALL_ENC_PIN2)
 #define READ_HALL3()			palReadPad(HW_HALL_ENC_GPIO3, HW_HALL_ENC_PIN3)
 
 // Override dead time. See the stm32f4 reference manual for calculating this value.
-#define HW_DEAD_TIME_NSEC		660.0
+#define HW_DEAD_TIME_NSEC				1000.0
 
-// Default setting overrides
-#ifndef MCCONF_L_MAX_VOLTAGE
-#define MCCONF_L_MAX_VOLTAGE			72.0	// Maximum input voltage
-#endif
-#ifndef MCCONF_DEFAULT_MOTOR_TYPE
+// Default Motor-configuration overrides
+
+// Maximum input voltage
+#define MCCONF_L_MAX_VOLTAGE			72.0
 #define MCCONF_DEFAULT_MOTOR_TYPE		MOTOR_TYPE_FOC
-#endif
-#ifndef MCCONF_FOC_SAMPLE_V0_V7
-#define MCCONF_FOC_SAMPLE_V0_V7			false	// Run control loop in both v0 and v7 (requires phase shunts)
-#endif
-#ifndef MCCONF_FOC_SAMPLE_HIGH_CURRENT
-#define MCCONF_FOC_SAMPLE_HIGH_CURRENT	true	// High current sampling mode (requires three shunts)
-#endif
-
-#ifndef MCCONF_L_CURRENT_MAX
-#define MCCONF_L_CURRENT_MAX			300.0
-#endif
-#ifndef MCCONF_L_CURRENT_MIN
+// Run control loop in both v0 and v7 (requires phase shunts)
+#define MCCONF_FOC_SAMPLE_V0_V7			false
+// High current sampling mode (requires three shunts)
+#define MCCONF_FOC_SAMPLE_HIGH_CURRENT	true
+#define MCCONF_L_CURRENT_MAX			350.0
 #define MCCONF_L_CURRENT_MIN			-60.0
-#endif
-#ifndef MCCONF_L_IN_CURRENT_MAX
 #define MCCONF_L_IN_CURRENT_MAX			200.0
-#endif
-#ifndef MCCONF_L_IN_CURRENT_MIN
 #define MCCONF_L_IN_CURRENT_MIN			-60.0
-#endif
-#ifndef MCCONF_L_MAX_ABS_CURRENT
 #define MCCONF_L_MAX_ABS_CURRENT		480.0
-#endif
-#ifndef MCCONF_L_RPM_MAX
-#define MCCONF_L_RPM_MAX				32000.0
-#endif
-#ifndef MCCONF_L_RPM_MIN
-#define MCCONF_L_RPM_MIN				-32000.0
-#endif
-#ifndef MCCONF_L_RPM_START
+#define MCCONF_L_RPM_MAX				30750.0
+#define MCCONF_L_RPM_MIN				-30750.0
 #define MCCONF_L_RPM_START				0.8
-#endif
-#ifndef MCCONF_FOC_CURRENT_KP
-#define MCCONF_FOC_CURRENT_KP			0.0046
-#endif
-#ifndef MCCONF_FOC_CURRENT_KI
-#define MCCONF_FOC_CURRENT_KI			6.6
-#endif
-#ifndef MCCONF_FOC_F_SW
-#define MCCONF_FOC_F_SW					20000.0
-#endif
-#ifndef MCCONF_FOC_MOTOR_L
-#define MCCONF_FOC_MOTOR_L				2.32e-6
-#endif
-#ifndef MCCONF_FOC_MOTOR_R
-#define MCCONF_FOC_MOTOR_R				0.0033
-#endif
-#ifndef MCCONF_FOC_MOTOR_FLUX_LINKAGE
-#define MCCONF_FOC_MOTOR_FLUX_LINKAGE	0.00849
-#endif
-#ifndef MCCONF_FOC_OBSERVER_GAIN
-#define MCCONF_FOC_OBSERVER_GAIN		8.87e6
-#endif
+#define MCCONF_L_WATT_MAX				11000.0
+#define MCCONF_L_WATT_MIN				-11000.0
+#define MCCONF_FOC_CURRENT_KP			0.01
+#define MCCONF_FOC_CURRENT_KI			6.0
+#define MCCONF_FOC_F_ZV					30000.0
+#define MCCONF_FOC_MOTOR_L				6.0e-6
+#define MCCONF_FOC_MOTOR_LD_LQ_DIFF		2.5e-6
+#define MCCONF_FOC_MOTOR_R				0.0024
+#define MCCONF_FOC_MOTOR_FLUX_LINKAGE	0.00796
+#define MCCONF_FOC_OBSERVER_GAIN		6.0e6
+#define MCCONF_L_LIM_TEMP_ACCEL_DEC		0.0
+#define MCCONF_L_BATTERY_CUT_START		49.0
+#define MCCONF_L_BATTERY_CUT_END		44.0
+#define MCCONF_L_LIM_TEMP_MOTOR_START	115.0
+#define MCCONF_L_LIM_TEMP_MOTOR_END		120.0
+// Motor Setup Info
+#define MCCONF_SI_MOTOR_POLES			8
+#define MCCONF_SI_BATTERY_TYPE			BATTERY_TYPE_LIION_3_0__4_2
+#define MCCONF_SI_BATTERY_CELLS			14
+#define MCCONF_SI_BATTERY_AH			69.0
 
-// Setup Info
-#ifndef MCCONF_SI_MOTOR_POLES
-#define MCCONF_SI_MOTOR_POLES			8 // Motor pole count
-#endif
-#ifndef MCCONF_SI_BATTERY_TYPE
-#define MCCONF_SI_BATTERY_TYPE			BATTERY_TYPE_LIION_3_0__4_2 // Battery Type
-#endif
-#ifndef MCCONF_SI_BATTERY_CELLS
-#define MCCONF_SI_BATTERY_CELLS			14 // Battery Cells
-#endif
-#ifndef MCCONF_SI_BATTERY_AH
-#define MCCONF_SI_BATTERY_AH			69.0 // Battery amp hours
-#endif
-
-// Setting limits
-#define HW_LIM_CURRENT			-350.0, 350.0
-#define HW_LIM_CURRENT_IN		-350.0, 350.0
-#define HW_LIM_CURRENT_ABS		0.0, 510.0
-#define HW_LIM_VIN				6.0, 72.0
-#define HW_LIM_ERPM				-200e3, 200e3
-#define HW_LIM_DUTY_MIN			0.0, 0.1
-#define HW_LIM_DUTY_MAX			0.0, 0.99
-#define HW_LIM_TEMP_FET			-40.0, 110.0
+// Motor-configuration limits
+#define HW_LIM_CURRENT					-350.0, 350.0
+#define HW_LIM_CURRENT_IN				-350.0, 350.0
+#define HW_LIM_CURRENT_ABS				0.0, 510.0
+#define HW_LIM_VIN						6.0, 72.0
+#define HW_LIM_ERPM						-200e3, 200e3
+#define HW_LIM_DUTY_MIN					0.0, 0.1
+#define HW_LIM_DUTY_MAX					0.0, 0.99
+#define HW_LIM_TEMP_FET					-40.0, 110.0
 
 // HW-specific functions
-float hw75_300_get_temp(void);
+float hw_rd2_get_temp(void);
 
-#endif /* HW_75_300_H_ */
+#endif /* HW_RD2_H_ */

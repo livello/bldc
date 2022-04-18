@@ -24,7 +24,7 @@
 #include "ch.h"
 #include "hal.h"
 #include "stm32f4xx_conf.h"
-#include "utils.h"
+#include "utils_math.h"
 #include "terminal.h"
 #include "commands.h"
 #include <string.h>
@@ -41,7 +41,6 @@ static void terminal_read_reg(int argc, const char **argv);
 static void terminal_write_reg(int argc, const char **argv);
 static void terminal_set_oc_adj(int argc, const char **argv);
 static void terminal_print_faults(int argc, const char **argv);
-static void terminal_reset_faults(int argc, const char **argv);
 
 // Private variables
 static char m_fault_print_buffer[120];
@@ -91,12 +90,6 @@ void drv8301_init(void) {
 			"Print all current DRV8301 faults.",
 			0,
 			terminal_print_faults);
-
-	terminal_register_command_callback(
-			"drv8301_reset_faults",
-			"Reset all latched DRV8301 faults.",
-			0,
-			terminal_reset_faults);
 }
 
 /**
@@ -426,12 +419,6 @@ static void terminal_print_faults(int argc, const char **argv) {
 	(void)argc;
 	(void)argv;
 	commands_printf(drv8301_faults_to_string(drv8301_read_faults()));
-}
-
-static void terminal_reset_faults(int argc, const char **argv) {
-	(void)argc;
-	(void)argv;
-	drv8301_reset_faults();
 }
 
 #endif

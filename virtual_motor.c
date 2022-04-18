@@ -20,11 +20,11 @@
 #include "terminal.h"
 #include "mc_interface.h"
 #include "mcpwm_foc.h"
-#include "utils.h"
+#include "utils_math.h"
 #include "math.h"
 #include "stdio.h"
 #include "commands.h"
-#include "encoder.h"
+#include "encoder/encoder.h"
 
 typedef struct{
 	//constant variables
@@ -63,9 +63,9 @@ typedef struct{
 }virtual_motor_t;
 
 static volatile virtual_motor_t virtual_motor;
-static volatile int m_curr0_offset_backup;
-static volatile int m_curr1_offset_backup;
-static volatile int m_curr2_offset_backup;
+static volatile float m_curr0_offset_backup;
+static volatile float m_curr1_offset_backup;
+static volatile float m_curr2_offset_backup;
 static volatile mc_configuration *m_conf;
 
 //private functions
@@ -127,12 +127,12 @@ void virtual_motor_set_configuration(volatile mc_configuration *conf){
 	virtual_motor.km = 1.5 * virtual_motor.pole_pairs;
 #ifdef HW_HAS_PHASE_SHUNTS
 	if (m_conf->foc_sample_v0_v7) {
-		virtual_motor.Ts = (1.0 / m_conf->foc_f_sw) ;
+		virtual_motor.Ts = (1.0 / m_conf->foc_f_zv) ;
 	} else {
-		virtual_motor.Ts = (1.0 / (m_conf->foc_f_sw / 2.0));
+		virtual_motor.Ts = (1.0 / (m_conf->foc_f_zv / 2.0));
 	}
 #else
-	virtual_motor.Ts = (1.0 / m_conf->foc_f_sw) ;
+	virtual_motor.Ts = (1.0 / m_conf->foc_f_zv) ;
 #endif
 
 	if(m_conf->foc_motor_ld_lq_diff > 0.0){
@@ -159,7 +159,7 @@ bool virtual_motor_is_connected(void){
 }
 
 float virtual_motor_get_angle_deg(void){
-	return (virtual_motor.phi * 180.0 / M_PI);
+	return RAD2DEG_f(virtual_motor.phi);
 }
 
 //Private Functions
@@ -214,7 +214,7 @@ static void connect_virtual_motor(float ml , float J, float Vbus){
 																							GET_GATE_DRIVER_SUPPLY_VOLTAGE();
 		}
 #endif
-		virtual_motor.phi = mcpwm_foc_get_phase() * M_PI / 180.0;
+		virtual_motor.phi = DEG2RAD_f(mcpwm_foc_get_phase());
 		utils_fast_sincos_better(virtual_motor.phi, (float*)&virtual_motor.sin_phi,
 														(float*)&virtual_motor.cos_phi);
 
@@ -273,29 +273,9 @@ static void disconnect_virtual_motor( void ){
 
 		ADC_Init(ADC1, &ADC_InitStructure);
 
-		if(m_conf->foc_sensor_mode == FOC_SENSOR_MODE_ENCODER){
-			switch (m_conf->m_sensor_port_mode) {
-			case SENSOR_PORT_MODE_ABI:
-				encoder_init_abi(m_conf->m_encoder_counts);
-				break;
-
-			case SENSOR_PORT_MODE_AS5047_SPI:
-				encoder_init_as5047p_spi();
-				break;
-
-			case SENSOR_PORT_MODE_AD2S1205:
-				encoder_init_ad2s1205_spi();
-				break;
-
-			case SENSOR_PORT_MODE_SINCOS:
-				encoder_init_sincos(m_conf->foc_encoder_sin_gain, m_conf->foc_encoder_sin_offset,
-									m_conf->foc_encoder_cos_gain, m_conf->foc_encoder_cos_offset,
-									m_conf->foc_encoder_sincos_filter_constant);
-				break;
-
-			default:
-				break;
-			}
+		if (m_conf->foc_sensor_mode == FOC_SENSOR_MODE_ENCODER) {
+			encoder_deinit();
+			encoder_init(m_conf);
 		}
 	}
 }

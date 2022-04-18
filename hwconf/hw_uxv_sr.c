@@ -20,7 +20,8 @@
 #include "ch.h"
 #include "hal.h"
 #include "stm32f4xx_conf.h"
-#include "utils.h"
+#include "utils_math.h"
+#include "utils_sys.h"
 #include "drv8323s.h"
 #include "comm_can.h"
 #include "mc_interface.h"
@@ -28,7 +29,7 @@
 
 // Threads
 THD_FUNCTION(dac_thread, arg);
-static THD_WORKING_AREA(dac_thread_wa, 1024);
+static THD_WORKING_AREA(dac_thread_wa, 256);
 static bool dac_thread_running = false;
 
 // Variables

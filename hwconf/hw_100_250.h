@@ -25,6 +25,7 @@
 // HW properties
 #define HW_HAS_3_SHUNTS
 #define INVERTED_SHUNT_POLARITY
+#define HW_HAS_PHASE_FILTERS
 
 // Macros
 #define LED_GREEN_GPIO			GPIOB
@@ -75,12 +76,12 @@
 #define HW_ADC_NBR_CONV			6
 
 // ADC Indexes
-#define ADC_IND_SENS1			0
-#define ADC_IND_SENS2			1
-#define ADC_IND_SENS3			2
-#define ADC_IND_CURR1			3
-#define ADC_IND_CURR2			4
-#define ADC_IND_CURR3			5
+#define ADC_IND_SENS1			3
+#define ADC_IND_SENS2			4
+#define ADC_IND_SENS3			5
+#define ADC_IND_CURR1			0
+#define ADC_IND_CURR2			1
+#define ADC_IND_CURR3			2
 #define ADC_IND_VIN_SENS		11
 #define ADC_IND_EXT				6
 #define ADC_IND_EXT2			7
@@ -234,8 +235,8 @@
 #ifndef MCCONF_DEFAULT_MOTOR_TYPE
 #define MCCONF_DEFAULT_MOTOR_TYPE		MOTOR_TYPE_FOC
 #endif
-#ifndef MCCONF_FOC_F_SW
-#define MCCONF_FOC_F_SW					40000.0
+#ifndef MCCONF_FOC_F_ZV
+#define MCCONF_FOC_F_ZV					30000.0
 #endif
 #ifndef MCCONF_L_MAX_ABS_CURRENT
 #define MCCONF_L_MAX_ABS_CURRENT		400.0	// The maximum absolute current above which a fault is generated

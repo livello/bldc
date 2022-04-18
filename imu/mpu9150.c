@@ -23,7 +23,7 @@
 
 #include "conf_general.h"
 #include "mpu9150.h"
-#include "utils.h"
+#include "utils_math.h"
 #include "stm32f4xx_conf.h"
 #include "i2c_bb.h"
 #include "terminal.h"
@@ -136,7 +136,7 @@ static void terminal_status(int argc, const char **argv) {
 				"Errors     : %i\n"
 				"Errors Mag : %i\n",
 				mpu9150_is_mpu9250() ? "MPU9250" : "MPU9150",
-						mpu9150_get_failed_mag_reads(),
+						mpu9150_get_failed_reads(),
 						mpu9150_get_failed_mag_reads());
 	} else {
 		commands_printf("MPU9x50 not found\n");

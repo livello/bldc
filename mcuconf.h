@@ -65,8 +65,8 @@
 #define STM32_I2SSRC                        STM32_I2SSRC_CKIN
 #define STM32_PLLI2SN_VALUE                 192
 #define STM32_PLLI2SR_VALUE                 5
-#define STM32_PVD_ENABLE                    FALSE
-#define STM32_PLS                           STM32_PLS_LEV0
+#define STM32_PVD_ENABLE                    TRUE
+#define STM32_PLS                           STM32_PLS_LEV6
 #define STM32_BKPRAM_ENABLE                 FALSE
 #else
 // 8M XTAL
@@ -95,7 +95,7 @@
 #define STM32_PLLI2SN_VALUE                 192
 #define STM32_PLLI2SR_VALUE                 5
 #define STM32_PVD_ENABLE                    TRUE
-#define STM32_PLS                           STM32_PLS_LEV7
+#define STM32_PLS                           STM32_PLS_LEV6
 #define STM32_BKPRAM_ENABLE                 FALSE
 #endif
 
@@ -121,7 +121,7 @@
  * CAN driver system settings.
  */
 #define STM32_CAN_USE_CAN1                  TRUE
-#define STM32_CAN_USE_CAN2                  FALSE
+#define STM32_CAN_USE_CAN2                  TRUE
 #define STM32_CAN_CAN1_IRQ_PRIORITY         11
 #define STM32_CAN_CAN2_IRQ_PRIORITY         11
 
@@ -187,8 +187,13 @@
 /*
  * I2C driver system settings.
  */
+#ifdef HW_USE_I2CD1
+#define STM32_I2C_USE_I2C1                  TRUE
+#define STM32_I2C_USE_I2C2                  FALSE
+#else
 #define STM32_I2C_USE_I2C1                  FALSE
 #define STM32_I2C_USE_I2C2                  TRUE
+#endif
 #define STM32_I2C_USE_I2C3                  FALSE
 #define STM32_I2C_BUSY_TIMEOUT              50
 #define STM32_I2C_I2C1_RX_DMA_STREAM        STM32_DMA_STREAM_ID(1, 0)
@@ -273,7 +278,7 @@
  * SERIAL driver system settings.
  */
 #define STM32_SERIAL_USE_USART1             TRUE
-#define STM32_SERIAL_USE_USART2             FALSE
+#define STM32_SERIAL_USE_USART2             TRUE
 #define STM32_SERIAL_USE_USART3             TRUE
 #define STM32_SERIAL_USE_UART4              TRUE
 #define STM32_SERIAL_USE_UART5              TRUE
