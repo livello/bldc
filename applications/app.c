@@ -56,6 +56,7 @@ void app_set_configuration(app_configuration *conf) {
 	app_nunchuk_stop();
 	app_balance_stop();
 	app_pas_stop();
+	app_charger_stop();
 
 	if (!conf_general_permanent_nrf_found) {
 		nrf_driver_stop();
@@ -124,6 +125,7 @@ void app_set_configuration(app_configuration *conf) {
         app_pas_start(true);
         hw_stop_i2c();
         app_uartcomm_start(UART_PORT_COMM_HEADER);
+        app_charger_start();
 		break;
 
 	case APP_ADC_PAS:
@@ -131,6 +133,7 @@ void app_set_configuration(app_configuration *conf) {
 		app_pas_start(true);
 		hw_stop_i2c();
 		app_uartcomm_start(UART_PORT_COMM_HEADER);
+		app_charger_start();
 		break;
 
 	case APP_NRF:
@@ -141,6 +144,10 @@ void app_set_configuration(app_configuration *conf) {
 		break;
 
 	case APP_CUSTOM:
+		app_pas_start(true);
+		hw_stop_i2c();
+		app_uartcomm_start(UART_PORT_COMM_HEADER);
+		app_charger_start();
 #ifdef APP_CUSTOM_TO_USE
 		hw_stop_i2c();
 		app_custom_start();
