@@ -36,12 +36,12 @@
 #include <stdio.h>
 
 // Threads
-static THD_FUNCTION(my_thread, arg);
-static THD_WORKING_AREA(my_thread_wa, 1024);
+static THD_FUNCTION(charger_thread, arg);
+static THD_WORKING_AREA(charger_thread_wa, 1024);
 
 // Private functions
 static void pwm_callback(void);
-static void terminal_test(int argc, const char **argv);
+static void terminal_charger(int argc, const char **argv);
 
 // Private variables
 static volatile bool stop_now = true;
@@ -50,25 +50,25 @@ static volatile bool is_running = false;
 // Called when the charger application is started. Start our
 // threads here and set up callbacks.
 void app_charger_start(void) {
-	mc_interface_set_pwm_callback(pwm_callback);
+//	mc_interface_set_pwm_callback(pwm_callback);
 
 	stop_now = false;
-	chThdCreateStatic(my_thread_wa, sizeof(my_thread_wa),
-	                  NORMALPRIO, my_thread, NULL);
+	chThdCreateStatic(charger_thread_wa, sizeof(charger_thread_wa),
+	                  NORMALPRIO, charger_thread, NULL);
 
 	// Terminal commands for the VESC Tool terminal can be registered.
 	terminal_register_command_callback(
 			"charger_cmd",
 			"Print the number d",
 			"[d]",
-			terminal_test);
+			terminal_charger);
 }
 
 // Called when the charger application is stopped. Stop our threads
 // and release callbacks.
 void app_charger_stop(void) {
-	mc_interface_set_pwm_callback(0);
-	terminal_unregister_callback(terminal_test);
+//	mc_interface_set_pwm_callback(0);
+	terminal_unregister_callback(terminal_charger);
 
 	stop_now = true;
 	while (is_running) {
@@ -80,7 +80,7 @@ void app_charger_configure(app_configuration *conf) {
 	(void)conf;
 }
 
-static THD_FUNCTION(my_thread, arg) {
+static THD_FUNCTION(charger_thread, arg) {
 (void)arg;
 
 chRegSetThreadName("App charger");
