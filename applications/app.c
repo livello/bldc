@@ -52,7 +52,7 @@ void app_set_configuration(app_configuration *conf) {
 
 	app_ppm_stop();
 	app_adc_stop();
-	app_uartcomm_stop(UART_PORT_COMM_HEADER);
+//	app_uartcomm_stop(UART_PORT_COMM_HEADER);
 	app_nunchuk_stop();
 	app_balance_stop();
 	app_pas_stop();
@@ -82,7 +82,7 @@ void app_set_configuration(app_configuration *conf) {
 
 	// Configure balance app before starting it.
 	app_balance_configure(&appconf.app_balance_conf, &appconf.imu_conf);
-
+	app_uartcomm_start(UART_PORT_COMM_HEADER);
 	switch (appconf.app_to_use) {
 	case APP_PPM:
 		app_ppm_start();
