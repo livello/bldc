@@ -1301,7 +1301,7 @@ uint32_t lastLogInTime = 0,lastVoltageSet=0;
 uint32_t d_chVTGetSystemTimeX = 0, lastStatusPrint=0;
 int intakeTemperature;
 float current, outputVoltage, currWattage, limitWattage = 0;
-int inputVoltage, outputTemperature, targetVoltage = 0;
+int inputVoltage, outputTemperature, targetVoltage = MIN_VOLTAGE, batteryVoltage=0;
 char output[256];
 bool hasWarning;
 bool hasAlarm;
@@ -1393,9 +1393,10 @@ void processWarningOrAlarmMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 }
 
 void setVoltage(){
-	if(targetVoltage<=0)
-		targetVoltage = (int)(mc_interface_get_input_voltage_filtered()*100.0f);
+		batteryVoltage = (int)(mc_interface_get_input_voltage_filtered()*100.0f);
 	if(abs(outputVoltage*100-targetVoltage)>20) {
+		if(batteryVoltage-targetVoltage>100)
+			targetVoltage+=50;
 		uint8_t voltageSetTxBuf[5] = {0x29, 0x15, 0x00, targetVoltage & 0xFF, (targetVoltage >> 8) & 0xFF};
 		comm_can_transmit_eid_replace(0x05019C00, voltageSetTxBuf, 5, false, 0);
 		commands_printf("set %i",targetVoltage);
