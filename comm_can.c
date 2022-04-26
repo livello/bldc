@@ -19,6 +19,7 @@
 
 #include <string.h>
 #include <math.h>
+#include <stdio.h>
 #include "comm_can.h"
 #include "ch.h"
 #include "hal.h"
@@ -1270,7 +1271,51 @@ static THD_FUNCTION(cancom_read_thread, arg) {
 	chEvtUnregister(&HW_CAN2_DEV.rxfull_event, &el2);
 #endif
 }
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+#define VOLTAGE 4800
+void printMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
+	char output[256];
 
+	snprintf(output, 256, "ID: 0x%.8lX Length: %1d Data:", rxID, len);
+	commands_printf(output);
+
+	for (int i = 0; i < len; ++i) {
+		snprintf(output, 256, " 0x%.2X", rxBuf[i]);
+		commands_printf(output);
+	}
+	commands_printf("\n");
+}
+bool done = false;
+void can_process_frame(uint32_t rxID, uint8_t *rxBuf, uint8_t len){
+//	comm_can_transmit_eid_replace(id | ((uint32_t)CAN_PACKET_STATUS_6 << 8),
+//	                              buffer, send_index, replace, 0);
+	rxID &= 0x1FFFFFFF;
+	printMessage(rxID, len, rxBuf);
+
+	if (!done && (rxID & 0xFFFF0000) == 0x05000000) {
+		commands_printf("Starting set");
+
+		uint8_t serialNumber[6];
+
+		for (int i = 0; i < 6; ++i) {
+			serialNumber[i] = rxBuf[i + 1];
+		}
+
+		uint8_t logInTxBuf[8] = { 0 };
+
+		for (int i = 0; i < 6; ++i) {
+			logInTxBuf[i] = serialNumber[i];
+		}
+
+		comm_can_transmit_eid_replace(0x05004804, logInTxBuf, 8, false,0 );
+		chThdSleepMilliseconds(100);
+		uint8_t voltageSetTxBuf[5] = { 0x29, 0x15, 0x00, VOLTAGE & 0xFF, (VOLTAGE >> 8) & 0xFF };
+		comm_can_transmit_eid_replace(0x05019C00, voltageSetTxBuf, 5, false,0 );
+		commands_printf("Set completed");
+		done = true;
+	}
+}
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 static THD_FUNCTION(cancom_process_thread, arg) {
 	(void)arg;
 
@@ -1289,7 +1334,7 @@ static THD_FUNCTION(cancom_process_thread, arg) {
 				commands_fwd_can_frame(rxmsg.DLC, rxmsg.data8,
 						rxmsg.IDE == CAN_IDE_EXT ? rxmsg.EID : rxmsg.SID,
 						rxmsg.IDE == CAN_IDE_EXT);
-
+				can_process_frame(rxmsg.EID, rxmsg.data8, rxmsg.DLC);
 				if (rxmsg.IDE == CAN_IDE_STD) {
 					if (sid_callback) {
 						sid_callback(rxmsg.SID, rxmsg.data8, rxmsg.DLC);
