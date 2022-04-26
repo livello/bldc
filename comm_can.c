@@ -1300,7 +1300,7 @@ const char *alarms1Strings[] = {"INTERNAL_VOLTAGE", "MODULE_FAIL", "MOD_FAIL_SEC
 bool serialNumberReceived = false;
 uint32_t lastLogInTime = 0,lastVoltageSet=0;
 uint32_t d_chVTGetSystemTimeX = 0, lastStatusPrint=0;
-int intakeTemperature;
+int intakeTemperature, limitCurrent = 0;
 float current, outputVoltage, currWattage, limitWattage = 0;
 uint16_t inputVoltage, outputTemperature, targetVoltage = MIN_VOLTAGE, batteryVoltage=0;
 int setVoltageDiff = 0;
@@ -1336,8 +1336,31 @@ void setVoltage(){
 		comm_can_transmit_eid_replace(0x05019C00, voltageSetTxBuf, 5, false, 0);
 	}
 }
+void setOutput(int current, int voltage, int overVoltage){
+
+		uint32_t packet_id = 0x05FF4000;
+		packet_id |= 0x4; // 5 second walk-in
+//		packet_id != 0x5; // 60 second walk-in
+
+		uint8_t data[8];
+		data[0] /* current           */ =  current     & 0x00ff;
+		data[1] /* current           */ = (current     & 0xff00) >> 8;
+		data[2] /* output voltage 1  */ =  voltage     & 0x00ff;
+		data[3] /* output voltage 1  */ = (voltage     & 0xff00) >> 8;
+		data[4] /* output voltage 2  */ =  voltage     & 0x00ff;
+		data[5] /* output voltage 2  */ = (voltage     & 0xff00) >> 8;
+		data[6] /* overVoltage       */ = overVoltage & 0x00ff;
+		data[7] /* overVoltage       */ = (overVoltage & 0xff00) >> 8;
+		comm_can_transmit_eid_replace(packet_id, data, 8, false, 0);
+}
+
 void processStatusMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 	limitWattage = mc_interface_get_configuration()->l_watt_max;
+	batteryVoltage = (int) (mc_interface_get_input_voltage_filtered() * 100.0f);
+	if (batteryVoltage > 0) {
+		limitCurrent = limitWattage / batteryVoltage;
+	}
+	limitCurrent = limitCurrent < 35 ? limitCurrent : 35;
 	intakeTemperature = rxBuf[0];
 	current = 0.1f * (rxBuf[1] | (rxBuf[2] << 8));
 	outputVoltage = 0.01f * (rxBuf[3] | (rxBuf[4] << 8));
@@ -1345,24 +1368,25 @@ void processStatusMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 	inputVoltage = rxBuf[5] | (rxBuf[6] << 8);
 	outputTemperature = rxBuf[7];
 
-	if(d_chVTGetSystemTimeX-lastVoltageSet > VOLTAGE_SET_DELAY_S*(double)CH_CFG_ST_FREQUENCY) {
+/*	if(d_chVTGetSystemTimeX-lastVoltageSet > VOLTAGE_SET_DELAY_S*(double)CH_CFG_ST_FREQUENCY) {
 		if (currWattage < limitWattage - WATTAGE_TOLERANCE && targetVoltage < MAX_VOLTAGE)
 			targetVoltage += VOLTAGE_STEP;
 		else
 			if (currWattage > limitWattage + WATTAGE_TOLERANCE && targetVoltage > MIN_VOLTAGE)
 				targetVoltage -= VOLTAGE_STEP;
 		if (rxID == 0x05014010) {
-//		snprintf(output, 3,("Currently in walk in (voltage ramping up)");
+		snprintf(output, 3,("Currently in walk in (voltage ramping up)");
 		}
 		lastVoltageSet = d_chVTGetSystemTimeX;
-	}
+	}*/
 	if(d_chVTGetSystemTimeX-lastStatusPrint>(double)CH_CFG_ST_FREQUENCY) {
-		snprintf(output, 250, "%iC,%.1fA,%.1fV,%iV,%iC,%.1fW,%.1fW set %iV %idV",
+		snprintf(output, 250, "%iC,%.1fA,%.1fV,%iV,%iC,%.1fW,%.1fW set %iA",
 		         intakeTemperature, current, outputVoltage, inputVoltage,
-		         outputTemperature, currWattage, limitWattage,targetVoltage,setVoltageDiff);
+		         outputTemperature, currWattage, limitWattage,limitCurrent);
 		commands_printf(output);
 		lastStatusPrint=d_chVTGetSystemTimeX;
-		setVoltage();;
+//		setVoltage();
+		setOutput(limitCurrent,5450, 5450);
 	}
 
 	hasWarning = rxID == 0x05014008;
@@ -1419,7 +1443,7 @@ void can_process_frame(uint32_t rxID, uint8_t *rxBuf, uint8_t len){
 	} else if ((rxID & 0xFFFFFF00) == 0x05014000) {
 			processStatusMessage(rxID, len, rxBuf);
 		} else if (rxID == 0x0501BFFC) {
-//				processWarningOrAlarmMessage(rxID, len, rxBuf);
+				processWarningOrAlarmMessage(rxID, len, rxBuf);
 			}
 
 	/*rxID &= 0x1FFFFFFF;
