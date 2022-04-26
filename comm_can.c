@@ -1298,7 +1298,7 @@ const char *alarms0Strings[] = {"OVS_LOCK_OUT", "MOD_FAIL_PRIMARY", "MOD_FAIL_SE
 const char *alarms1Strings[] = {"INTERNAL_VOLTAGE", "MODULE_FAIL", "MOD_FAIL_SECONDARY", "FAN1_SPEED_LOW", "FAN2_SPEED_LOW", "SUB_MOD1_FAIL", "FAN3_SPEED_LOW", "INNER_VOLT"};
 bool serialNumberReceived = false;
 uint32_t lastLogInTime = 0,lastVoltageSet=0;
-uint32_t d_chVTGetSystemTimeX = 0;
+uint32_t d_chVTGetSystemTimeX = 0, lastStatusPrint=0;
 int intakeTemperature;
 float current, outputVoltage, currWattage, limitWattage = 0;
 int inputVoltage, outputTemperature, targetVoltage = 0;
@@ -1333,9 +1333,7 @@ void processStatusMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 	currWattage = current * outputVoltage;
 	inputVoltage = rxBuf[5] | (rxBuf[6] << 8);
 	outputTemperature = rxBuf[7];
-	snprintf(output, 250,"%iC,%.1fA,%.1fV,%iV,%iC,%.1fW,%.1fW",
-		  intakeTemperature,current,outputVoltage,inputVoltage,outputTemperature,currWattage,limitWattage);
-	commands_printf(output);
+
 	if(d_chVTGetSystemTimeX-lastVoltageSet > VOLTAGE_SET_DELAY_S*(double)CH_CFG_ST_FREQUENCY) {
 		if (currWattage < limitWattage - WATTAGE_TOLERANCE && targetVoltage < MAX_VOLTAGE)
 			targetVoltage += VOLTAGE_STEP;
@@ -1346,6 +1344,12 @@ void processStatusMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 //		snprintf(output, 3,("Currently in walk in (voltage ramping up)");
 		}
 		lastVoltageSet = d_chVTGetSystemTimeX;
+	}
+	if(d_chVTGetSystemTimeX-lastStatusPrint>1000) {
+		snprintf(output, 250, "%iC,%.1fA,%.1fV,%iV,%iC,%.1fW,%.1fW",
+		         intakeTemperature, current, outputVoltage, inputVoltage, outputTemperature, currWattage, limitWattage);
+		commands_printf(output);
+		lastStatusPrint=d_chVTGetSystemTimeX;
 	}
 
 	hasWarning = rxID == 0x05014008;
@@ -1390,7 +1394,7 @@ void processWarningOrAlarmMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 
 void setVoltage(){
 	if(targetVoltage<=0)
-		targetVoltage = mc_interface_get_input_voltage_filtered()*100;
+		targetVoltage = (int)(mc_interface_get_input_voltage_filtered()*100.0f);
 	if(abs(outputVoltage*100-targetVoltage)>20) {
 		uint8_t voltageSetTxBuf[5] = {0x29, 0x15, 0x00, targetVoltage & 0xFF, (targetVoltage >> 8) & 0xFF};
 		comm_can_transmit_eid_replace(0x05019C00, voltageSetTxBuf, 5, false, 0);
@@ -1412,7 +1416,7 @@ void can_process_frame(uint32_t rxID, uint8_t *rxBuf, uint8_t len){
 			processStatusMessage(rxID, len, rxBuf);
 			setVoltage();
 		} else if (rxID == 0x0501BFFC) {
-				processWarningOrAlarmMessage(rxID, len, rxBuf);
+//				processWarningOrAlarmMessage(rxID, len, rxBuf);
 			}
 
 	/*rxID &= 0x1FFFFFFF;
