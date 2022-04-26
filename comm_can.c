@@ -1303,14 +1303,6 @@ static THD_FUNCTION(cancom_read_thread, arg) {
 #endif
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
-#define VOLTAGE 4800
-#define MIN_VOLTAGE 4500
-#define MAX_VOLTAGE 5500
-#define WATTAGE_TOLERANCE 75
-#define VOLTAGE_STEP 5
-#define VOLTAGE_SET_DELAY_S 10
-#define VOLTAGE_SET_TOLERANCE 3
-
 void printMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 	char output[256];
 
@@ -1330,12 +1322,12 @@ uint8_t logInTxBuf[8] = {0};
 const char *alarms0Strings[] = {"OVS_LOCK_OUT", "MOD_FAIL_PRIMARY", "MOD_FAIL_SECONDARY", "HIGH_MAINS", "LOW_MAINS", "HIGH_TEMP", "LOW_TEMP", "CURRENT_LIMIT"};
 const char *alarms1Strings[] = {"INTERNAL_VOLTAGE", "MODULE_FAIL", "MOD_FAIL_SECONDARY", "FAN1_SPEED_LOW", "FAN2_SPEED_LOW", "SUB_MOD1_FAIL", "FAN3_SPEED_LOW", "INNER_VOLT"};
 bool serialNumberReceived = false;
-uint32_t lastLogInTime = 0, lastVoltageSet = 0;
+uint32_t lastLogInTime = 0;
 uint32_t d_chVTGetSystemTimeX = 0, lastStatusPrint = 0;
-int intakeTemperature, limitCurrent = 0;
+int intakeTemperature;
+float limitCurrent = 0;
 float current, outputVoltage, currWattage, limitWattage = 0;
-uint16_t inputVoltage, outputTemperature, targetVoltage = MIN_VOLTAGE, batteryVoltage = 0;
-int setVoltageDiff = 0;
+uint16_t inputVoltage, outputTemperature, batteryVoltage = 0;
 char output[256];
 bool hasWarning;
 bool hasAlarm;
@@ -1382,7 +1374,7 @@ void processStatusMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 	limitWattage = mc_interface_get_configuration()->l_watt_max;
 	batteryVoltage = (int) (mc_interface_get_input_voltage_filtered() * 100.0f);
 	if (batteryVoltage > 0) {
-		limitCurrent = (int) (100*limitWattage / batteryVoltage);
+		limitCurrent = (100.0f*limitWattage / batteryVoltage);
 	}
 	limitCurrent = limitCurrent < 35 ? limitCurrent : 35;
 	intakeTemperature = rxBuf[0];
@@ -1464,7 +1456,7 @@ void can_process_frame(uint32_t rxID, uint8_t *rxBuf, uint8_t len) {
 		}
 	}
 }
-
+//can_process_frame(rxmsg.EID, rxmsg.data8, rxmsg.DLC);
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 static THD_FUNCTION(cancom_process_thread, arg) {
 	(void) arg;
