@@ -1336,13 +1336,13 @@ void setVoltage(){
 		comm_can_transmit_eid_replace(0x05019C00, voltageSetTxBuf, 5, false, 0);
 	}
 }
+uint8_t data[8];
+uint32_t packet_id = 0x05FF4000;
 void setOutput(int current, int voltage, int overVoltage){
 
-		uint32_t packet_id = 0x05FF4000;
+		packet_id = 0x05FF4000;
 		packet_id |= 0x4; // 5 second walk-in
 //		packet_id != 0x5; // 60 second walk-in
-
-		uint8_t data[8];
 		data[0] /* current           */ =  current     & 0x00ff;
 		data[1] /* current           */ = (current     & 0xff00) >> 8;
 		data[2] /* output voltage 1  */ =  voltage     & 0x00ff;
