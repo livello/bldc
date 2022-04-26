@@ -1279,6 +1279,7 @@ static THD_FUNCTION(cancom_read_thread, arg) {
 #define WATTAGE_TOLERANCE 75
 #define VOLTAGE_STEP 20
 #define VOLTAGE_SET_DELAY_S 10
+#define VOLTAGE_SET_TOLERANCE 40
 void printMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 	char output[256];
 
@@ -1324,7 +1325,16 @@ void processLogInRequest(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 	}
 	serialNumberReceived = true;
 }
-
+void setVoltage(){
+	batteryVoltage = (int)(mc_interface_get_input_voltage_filtered()*100.0f);
+	if(abs((int)(outputVoltage*100.0f)-targetVoltage)>VOLTAGE_SET_TOLERANCE) {
+		if(batteryVoltage-targetVoltage>100)
+			targetVoltage+=50;
+		uint8_t voltageSetTxBuf[5] = {0x29, 0x15, 0x00, targetVoltage & 0xFF, (targetVoltage >> 8) & 0xFF};
+		comm_can_transmit_eid_replace(0x05019C00, voltageSetTxBuf, 5, false, 0);
+		commands_printf("set %i",targetVoltage);
+	}
+}
 void processStatusMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 	limitWattage = mc_interface_get_configuration()->l_watt_max;
 	intakeTemperature = rxBuf[0];
@@ -1345,11 +1355,12 @@ void processStatusMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 		}
 		lastVoltageSet = d_chVTGetSystemTimeX;
 	}
-	if(d_chVTGetSystemTimeX-lastStatusPrint>1000) {
+	if(d_chVTGetSystemTimeX-lastStatusPrint>(double)CH_CFG_ST_FREQUENCY) {
 		snprintf(output, 250, "%iC,%.1fA,%.1fV,%iV,%iC,%.1fW,%.1fW",
 		         intakeTemperature, current, outputVoltage, inputVoltage, outputTemperature, currWattage, limitWattage);
 		commands_printf(output);
 		lastStatusPrint=d_chVTGetSystemTimeX;
+		setVoltage();;
 	}
 
 	hasWarning = rxID == 0x05014008;
@@ -1392,16 +1403,6 @@ void processWarningOrAlarmMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 	}
 }
 
-void setVoltage(){
-		batteryVoltage = (int)(mc_interface_get_input_voltage_filtered()*100.0f);
-	if(abs(outputVoltage*100-targetVoltage)>20) {
-		if(batteryVoltage-targetVoltage>100)
-			targetVoltage+=50;
-		uint8_t voltageSetTxBuf[5] = {0x29, 0x15, 0x00, targetVoltage & 0xFF, (targetVoltage >> 8) & 0xFF};
-		comm_can_transmit_eid_replace(0x05019C00, voltageSetTxBuf, 5, false, 0);
-		commands_printf("set %i",targetVoltage);
-	}
-}
 void can_process_frame(uint32_t rxID, uint8_t *rxBuf, uint8_t len){
 	d_chVTGetSystemTimeX = (double)chVTGetSystemTimeX();
 	if(serialNumberReceived){
@@ -1415,7 +1416,6 @@ void can_process_frame(uint32_t rxID, uint8_t *rxBuf, uint8_t len){
 		processLogInRequest(rxID, len, rxBuf);
 	} else if ((rxID & 0xFFFFFF00) == 0x05014000) {
 			processStatusMessage(rxID, len, rxBuf);
-			setVoltage();
 		} else if (rxID == 0x0501BFFC) {
 //				processWarningOrAlarmMessage(rxID, len, rxBuf);
 			}
