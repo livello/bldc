@@ -1274,7 +1274,7 @@ static THD_FUNCTION(cancom_read_thread, arg) {
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #define VOLTAGE 4800
-#define MIN_VOLTAGE 4300
+#define MIN_VOLTAGE 4500
 #define MAX_VOLTAGE 5500
 void printMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 	char output[256];
@@ -1294,8 +1294,8 @@ uint8_t logInTxBuf[8] = { 0 };
 const char *alarms0Strings[] = {"OVS_LOCK_OUT", "MOD_FAIL_PRIMARY", "MOD_FAIL_SECONDARY", "HIGH_MAINS", "LOW_MAINS", "HIGH_TEMP", "LOW_TEMP", "CURRENT_LIMIT"};
 const char *alarms1Strings[] = {"INTERNAL_VOLTAGE", "MODULE_FAIL", "MOD_FAIL_SECONDARY", "FAN1_SPEED_LOW", "FAN2_SPEED_LOW", "SUB_MOD1_FAIL", "FAN3_SPEED_LOW", "INNER_VOLT"};
 bool serialNumberReceived = false;
-double lastLogInTime = 0;
-double d_chVTGetSystemTimeX = 0;
+uint32_t lastLogInTime = 0,lastVoltageSet=0;
+uint32_t d_chVTGetSystemTimeX = 0;
 int intakeTemperature;
 float current, outputVoltage, currWattage, limitWattage = 0;
 int inputVoltage, outputTemperature, targetVoltage = VOLTAGE;
@@ -1333,12 +1333,16 @@ void processStatusMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 	snprintf(output, 250,"IT: %i C,%.2f A,%.2f V,%i V,%i C,%.2f W,%.2f W",
 		  intakeTemperature,current,outputVoltage,inputVoltage,outputTemperature,currWattage,limitWattage);
 	commands_printf(output);
-	if(currWattage<limitWattage-20&&targetVoltage<MAX_VOLTAGE)
-		targetVoltage+=50;
-	else if(currWattage>limitWattage+20&&targetVoltage>MIN_VOLTAGE)
-		targetVoltage-=50;
-	if (rxID == 0x05014010) {
+	if(d_chVTGetSystemTimeX-lastVoltageSet > 5*(double)CH_CFG_ST_FREQUENCY) {
+		if (currWattage < limitWattage - 20 && targetVoltage < MAX_VOLTAGE)
+			targetVoltage += 50;
+		else
+			if (currWattage > limitWattage + 20 && targetVoltage > MIN_VOLTAGE)
+				targetVoltage -= 50;
+		if (rxID == 0x05014010) {
 //		snprintf(output, 3,("Currently in walk in (voltage ramping up)");
+		}
+		lastVoltageSet = d_chVTGetSystemTimeX;
 	}
 
 	hasWarning = rxID == 0x05014008;
