@@ -1286,33 +1286,33 @@ void printMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 	commands_printf("\n");
 }
 bool done = false;
-void can_process_frame(uint32_t rxID, uint8_t *rxBuf, uint8_t len){
+uint8_t serialNumber[6];
+uint8_t logInTxBuf[8] = { 0 };
+
+void can_process_frame(uint32_t rxID, uint8_t *rxBuf, uint8_t len) {
 //	comm_can_transmit_eid_replace(id | ((uint32_t)CAN_PACKET_STATUS_6 << 8),
 //	                              buffer, send_index, replace, 0);
 	rxID &= 0x1FFFFFFF;
-	printMessage(rxID, len, rxBuf);
+//	printMessage(rxID, len, rxBuf);
+	if ((rxID & 0xFFFF0000) == 0x05000000) {
+		if (!done) {
+			commands_printf("login");
+			for(int i = 0; i < 6; ++i) {
+				serialNumber[i] = rxBuf[i + 1];
+			}
 
-	if (!done && (rxID & 0xFFFF0000) == 0x05000000) {
-		commands_printf("Starting set");
+			for(int i = 0; i < 6; ++i) {
+				logInTxBuf[i] = serialNumber[i];
+			}
 
-		uint8_t serialNumber[6];
-
-		for (int i = 0; i < 6; ++i) {
-			serialNumber[i] = rxBuf[i + 1];
+			comm_can_transmit_eid_replace(0x05004804, logInTxBuf, 8, false, 0);
+			chThdSleepMilliseconds(100);
+			done = true;
+		} else {
+			uint8_t voltageSetTxBuf[5] = {0x29, 0x15, 0x00, VOLTAGE & 0xFF, (VOLTAGE >> 8) & 0xFF};
+			comm_can_transmit_eid_replace(0x05019C00, voltageSetTxBuf, 5, false, 0);
+			commands_printf("set V");
 		}
-
-		uint8_t logInTxBuf[8] = { 0 };
-
-		for (int i = 0; i < 6; ++i) {
-			logInTxBuf[i] = serialNumber[i];
-		}
-
-		comm_can_transmit_eid_replace(0x05004804, logInTxBuf, 8, false,0 );
-		chThdSleepMilliseconds(100);
-		uint8_t voltageSetTxBuf[5] = { 0x29, 0x15, 0x00, VOLTAGE & 0xFF, (VOLTAGE >> 8) & 0xFF };
-		comm_can_transmit_eid_replace(0x05019C00, voltageSetTxBuf, 5, false,0 );
-		commands_printf("Set completed");
-		done = true;
 	}
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
