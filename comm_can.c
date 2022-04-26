@@ -1330,14 +1330,14 @@ void processStatusMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 	currWattage = current * outputVoltage;
 	inputVoltage = rxBuf[5] | (rxBuf[6] << 8);
 	outputTemperature = rxBuf[7];
-	snprintf(output, 250,"IT: %i C,%.2f A,%.2f V,%i V,%i C,%.2f W,%.2f W",
+	snprintf(output, 250,"%iC,%.1fA,%.1fV,%iV,%iC,%.1fW,%.1fW",
 		  intakeTemperature,current,outputVoltage,inputVoltage,outputTemperature,currWattage,limitWattage);
 	commands_printf(output);
-	if(d_chVTGetSystemTimeX-lastVoltageSet > 5*(double)CH_CFG_ST_FREQUENCY) {
-		if (currWattage < limitWattage - 20 && targetVoltage < MAX_VOLTAGE)
+	if(d_chVTGetSystemTimeX-lastVoltageSet > 15*(double)CH_CFG_ST_FREQUENCY) {
+		if (currWattage < limitWattage - 75 && targetVoltage < MAX_VOLTAGE)
 			targetVoltage += 50;
 		else
-			if (currWattage > limitWattage + 20 && targetVoltage > MIN_VOLTAGE)
+			if (currWattage > limitWattage + 75 && targetVoltage > MIN_VOLTAGE)
 				targetVoltage -= 50;
 		if (rxID == 0x05014010) {
 //		snprintf(output, 3,("Currently in walk in (voltage ramping up)");
