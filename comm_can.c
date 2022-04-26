@@ -1276,6 +1276,9 @@ static THD_FUNCTION(cancom_read_thread, arg) {
 #define VOLTAGE 4800
 #define MIN_VOLTAGE 4500
 #define MAX_VOLTAGE 5500
+#define WATTAGE_TOLERANCE 75
+#define VOLTAGE_STEP 20
+#define VOLTAGE_SET_DELAY_S 10
 void printMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 	char output[256];
 
@@ -1298,7 +1301,7 @@ uint32_t lastLogInTime = 0,lastVoltageSet=0;
 uint32_t d_chVTGetSystemTimeX = 0;
 int intakeTemperature;
 float current, outputVoltage, currWattage, limitWattage = 0;
-int inputVoltage, outputTemperature, targetVoltage = VOLTAGE;
+int inputVoltage, outputTemperature, targetVoltage = 0;
 char output[256];
 bool hasWarning;
 bool hasAlarm;
@@ -1333,12 +1336,12 @@ void processStatusMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 	snprintf(output, 250,"%iC,%.1fA,%.1fV,%iV,%iC,%.1fW,%.1fW",
 		  intakeTemperature,current,outputVoltage,inputVoltage,outputTemperature,currWattage,limitWattage);
 	commands_printf(output);
-	if(d_chVTGetSystemTimeX-lastVoltageSet > 15*(double)CH_CFG_ST_FREQUENCY) {
-		if (currWattage < limitWattage - 75 && targetVoltage < MAX_VOLTAGE)
-			targetVoltage += 50;
+	if(d_chVTGetSystemTimeX-lastVoltageSet > VOLTAGE_SET_DELAY_S*(double)CH_CFG_ST_FREQUENCY) {
+		if (currWattage < limitWattage - WATTAGE_TOLERANCE && targetVoltage < MAX_VOLTAGE)
+			targetVoltage += VOLTAGE_STEP;
 		else
-			if (currWattage > limitWattage + 75 && targetVoltage > MIN_VOLTAGE)
-				targetVoltage -= 50;
+			if (currWattage > limitWattage + WATTAGE_TOLERANCE && targetVoltage > MIN_VOLTAGE)
+				targetVoltage -= VOLTAGE_STEP;
 		if (rxID == 0x05014010) {
 //		snprintf(output, 3,("Currently in walk in (voltage ramping up)");
 		}
@@ -1386,13 +1389,15 @@ void processWarningOrAlarmMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 }
 
 void setVoltage(){
+	if(targetVoltage<=0)
+		targetVoltage = mc_interface_get_input_voltage_filtered()*100;
 	if(abs(outputVoltage*100-targetVoltage)>20) {
 		uint8_t voltageSetTxBuf[5] = {0x29, 0x15, 0x00, targetVoltage & 0xFF, (targetVoltage >> 8) & 0xFF};
 		comm_can_transmit_eid_replace(0x05019C00, voltageSetTxBuf, 5, false, 0);
 		commands_printf("set %i",targetVoltage);
 	}
 }
-void can_process_frame(uint32_t rxID, uint8_t *rxBuf, uint8_t len) {
+void can_process_frame(uint32_t rxID, uint8_t *rxBuf, uint8_t len){
 	d_chVTGetSystemTimeX = (double)chVTGetSystemTimeX();
 	if(serialNumberReceived){
 		if (d_chVTGetSystemTimeX - lastLogInTime > (double)CH_CFG_ST_FREQUENCY) {
