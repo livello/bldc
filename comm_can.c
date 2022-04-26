@@ -1274,6 +1274,8 @@ static THD_FUNCTION(cancom_read_thread, arg) {
 }
 //////////////////////////////////////////////////////////////////////////////////////////////////////////////
 #define VOLTAGE 4800
+#define MIN_VOLTAGE 4300
+#define MAX_VOLTAGE 5500
 void printMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 	char output[256];
 
@@ -1295,8 +1297,8 @@ bool serialNumberReceived = false;
 double lastLogInTime = 0;
 double d_chVTGetSystemTimeX = 0;
 int intakeTemperature;
-float current, outputVoltage, currWattage;
-int inputVoltage, outputTemperature, targetVoltage;
+float current, outputVoltage, currWattage, limitWattage = 0;
+int inputVoltage, outputTemperature, targetVoltage = VOLTAGE;
 char output[256];
 bool hasWarning;
 bool hasAlarm;
@@ -1321,18 +1323,20 @@ void processLogInRequest(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 }
 
 void processStatusMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
+	limitWattage = mc_interface_get_configuration()->l_watt_max;
 	intakeTemperature = rxBuf[0];
 	current = 0.1f * (rxBuf[1] | (rxBuf[2] << 8));
 	outputVoltage = 0.01f * (rxBuf[3] | (rxBuf[4] << 8));
 	currWattage = current * outputVoltage;
 	inputVoltage = rxBuf[5] | (rxBuf[6] << 8);
 	outputTemperature = rxBuf[7];
-	snprintf(output, 250,"IT: %i C,%.4f A,%.4f V,%i V,%i C,%.4f W,%.4f",
-		  intakeTemperature,current,outputVoltage,inputVoltage,outputTemperature,
-		  currWattage,mc_interface_get_configuration()->l_watt_max);
-
+	snprintf(output, 250,"IT: %i C,%.2f A,%.2f V,%i V,%i C,%.2f W,%.2f W",
+		  intakeTemperature,current,outputVoltage,inputVoltage,outputTemperature,currWattage,limitWattage);
 	commands_printf(output);
-
+	if(currWattage<limitWattage-20&&targetVoltage<MAX_VOLTAGE)
+		targetVoltage+=50;
+	else if(currWattage>limitWattage+20&&targetVoltage>MIN_VOLTAGE)
+		targetVoltage-=50;
 	if (rxID == 0x05014010) {
 //		snprintf(output, 3,("Currently in walk in (voltage ramping up)");
 	}
@@ -1378,10 +1382,10 @@ void processWarningOrAlarmMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 }
 
 void setVoltage(){
-	if(abs(outputVoltage*100-VOLTAGE)>100) {
-		uint8_t voltageSetTxBuf[5] = {0x29, 0x15, 0x00, VOLTAGE & 0xFF, (VOLTAGE >> 8) & 0xFF};
+	if(abs(outputVoltage*100-targetVoltage)>20) {
+		uint8_t voltageSetTxBuf[5] = {0x29, 0x15, 0x00, targetVoltage & 0xFF, (targetVoltage >> 8) & 0xFF};
 		comm_can_transmit_eid_replace(0x05019C00, voltageSetTxBuf, 5, false, 0);
-		commands_printf("set V");
+		commands_printf("set %i",targetVoltage);
 	}
 }
 void can_process_frame(uint32_t rxID, uint8_t *rxBuf, uint8_t len) {
