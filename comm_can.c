@@ -1302,7 +1302,7 @@ uint32_t lastLogInTime = 0,lastVoltageSet=0;
 uint32_t d_chVTGetSystemTimeX = 0, lastStatusPrint=0;
 int intakeTemperature;
 float current, outputVoltage, currWattage, limitWattage = 0;
-int inputVoltage, outputTemperature, targetVoltage = MIN_VOLTAGE, batteryVoltage=0;
+uint16_t inputVoltage, outputTemperature, targetVoltage = MIN_VOLTAGE, batteryVoltage=0;
 int setVoltageDiff = 0;
 char output[256];
 bool hasWarning;
