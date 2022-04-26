@@ -1279,7 +1279,7 @@ static THD_FUNCTION(cancom_read_thread, arg) {
 #define WATTAGE_TOLERANCE 75
 #define VOLTAGE_STEP 5
 #define VOLTAGE_SET_DELAY_S 10
-#define VOLTAGE_SET_TOLERANCE 20
+#define VOLTAGE_SET_TOLERANCE 5
 void printMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 	char output[256];
 
@@ -1332,7 +1332,6 @@ void setVoltage(){
 			targetVoltage+=50;
 		uint8_t voltageSetTxBuf[5] = {0x29, 0x15, 0x00, targetVoltage & 0xFF, (targetVoltage >> 8) & 0xFF};
 		comm_can_transmit_eid_replace(0x05019C00, voltageSetTxBuf, 5, false, 0);
-		commands_printf("set %i",targetVoltage);
 	}
 }
 void processStatusMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
@@ -1356,8 +1355,9 @@ void processStatusMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 		lastVoltageSet = d_chVTGetSystemTimeX;
 	}
 	if(d_chVTGetSystemTimeX-lastStatusPrint>(double)CH_CFG_ST_FREQUENCY) {
-		snprintf(output, 250, "%iC,%.1fA,%.1fV,%iV,%iC,%.1fW,%.1fW",
-		         intakeTemperature, current, outputVoltage, inputVoltage, outputTemperature, currWattage, limitWattage);
+		snprintf(output, 250, "%iC,%.1fA,%.1fV,%iV,%iC,%.1fW,%.1fW set %iV",
+		         intakeTemperature, current, outputVoltage, inputVoltage,
+		         outputTemperature, currWattage, limitWattage,targetVoltage);
 		commands_printf(output);
 		lastStatusPrint=d_chVTGetSystemTimeX;
 		setVoltage();;
