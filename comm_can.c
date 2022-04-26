@@ -20,6 +20,7 @@
 #include <string.h>
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "comm_can.h"
 #include "ch.h"
 #include "hal.h"
@@ -1288,32 +1289,132 @@ void printMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 bool done = false;
 uint8_t serialNumber[6];
 uint8_t logInTxBuf[8] = { 0 };
+const char *alarms0Strings[] = {"OVS_LOCK_OUT", "MOD_FAIL_PRIMARY", "MOD_FAIL_SECONDARY", "HIGH_MAINS", "LOW_MAINS", "HIGH_TEMP", "LOW_TEMP", "CURRENT_LIMIT"};
+const char *alarms1Strings[] = {"INTERNAL_VOLTAGE", "MODULE_FAIL", "MOD_FAIL_SECONDARY", "FAN1_SPEED_LOW", "FAN2_SPEED_LOW", "SUB_MOD1_FAIL", "FAN3_SPEED_LOW", "INNER_VOLT"};
+bool serialNumberReceived = false;
+double lastLogInTime = 0;
+double d_chVTGetSystemTimeX = 0;
+int intakeTemperature;
+float current, outputVoltage, currWattage;
+int inputVoltage, outputTemperature, targetVoltage;
+char output[256];
+bool hasWarning;
+bool hasAlarm;
 
+void logIn() {
+	for(int i = 0; i < 6; ++i) {
+		logInTxBuf[i] = serialNumber[i];
+	}
+	comm_can_transmit_eid_replace(0x05004804, logInTxBuf, 8, false, 0);	
+}
+
+void processLogInRequest(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
+	commands_printf("--------");
+	commands_printf("Found power supply ");
+	char output[3];
+	for (int i = 0; i < 6; ++i) {
+		serialNumber[i] = rxBuf[i + 1];
+		snprintf(output, 3, "%.2X", serialNumber[i]);
+		commands_printf(output);
+	}
+	serialNumberReceived = true;
+}
+
+void processStatusMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
+	intakeTemperature = rxBuf[0];
+	current = 0.1f * (rxBuf[1] | (rxBuf[2] << 8));
+	outputVoltage = 0.01f * (rxBuf[3] | (rxBuf[4] << 8));
+	currWattage = current * outputVoltage;
+	inputVoltage = rxBuf[5] | (rxBuf[6] << 8);
+	outputTemperature = rxBuf[7];
+	snprintf(output, 250,"IT: %i C,%.4f A,%.4f V,%i V,%i C,%.4f W,%.4f",
+		  intakeTemperature,current,outputVoltage,inputVoltage,outputTemperature,
+		  currWattage,mc_interface_get_configuration()->l_watt_max);
+
+	commands_printf(output);
+
+	if (rxID == 0x05014010) {
+//		snprintf(output, 3,("Currently in walk in (voltage ramping up)");
+	}
+
+	hasWarning = rxID == 0x05014008;
+	hasAlarm = rxID == 0x0501400C;
+
+	if (hasWarning) {
+		commands_printf("WARNING");
+	} else if (hasAlarm) {
+			commands_printf("ALARM");
+		}
+
+	if (hasWarning || hasAlarm) {
+		uint8_t txBuf[3] = {0x08, hasWarning ? 0x04 : 0x08, 0x00};
+		comm_can_transmit_eid_replace(0x0501BFFC, txBuf, 3, false, 0);
+	}
+}
+
+void processWarningOrAlarmMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
+	bool isWarning = rxBuf[1] == 0x04;
+	commands_printf("--------");
+	if (isWarning) {
+		commands_printf("Warnings:");
+	} else {
+		commands_printf("Alarms:");
+	}
+
+	uint8_t alarms0 = rxBuf[3];
+	uint8_t alarms1 = rxBuf[4];
+
+	for (int i = 0; i < 8; ++i) {
+		if (alarms0 & (1 << i)) {
+			commands_printf(" ");
+			commands_printf(alarms0Strings[i]);
+		}
+
+		if (alarms1 & (1 << i)) {
+			commands_printf(" ");
+			commands_printf(alarms1Strings[i]);
+		}
+	}
+}
+
+void setVoltage(){
+	if(abs(outputVoltage*100-VOLTAGE)>100) {
+		uint8_t voltageSetTxBuf[5] = {0x29, 0x15, 0x00, VOLTAGE & 0xFF, (VOLTAGE >> 8) & 0xFF};
+		comm_can_transmit_eid_replace(0x05019C00, voltageSetTxBuf, 5, false, 0);
+		commands_printf("set V");
+	}
+}
 void can_process_frame(uint32_t rxID, uint8_t *rxBuf, uint8_t len) {
-//	comm_can_transmit_eid_replace(id | ((uint32_t)CAN_PACKET_STATUS_6 << 8),
-//	                              buffer, send_index, replace, 0);
-	rxID &= 0x1FFFFFFF;
-//	printMessage(rxID, len, rxBuf);
+	d_chVTGetSystemTimeX = (double)chVTGetSystemTimeX();
+	if(serialNumberReceived){
+		if (d_chVTGetSystemTimeX - lastLogInTime > (double)CH_CFG_ST_FREQUENCY) {
+			logIn();
+			lastLogInTime = d_chVTGetSystemTimeX;
+		}
+	}
+
+	if (!serialNumberReceived && (rxID & 0xFFFF0000) == 0x05000000) {
+		processLogInRequest(rxID, len, rxBuf);
+	} else if ((rxID & 0xFFFFFF00) == 0x05014000) {
+			processStatusMessage(rxID, len, rxBuf);
+			setVoltage();
+		} else if (rxID == 0x0501BFFC) {
+				processWarningOrAlarmMessage(rxID, len, rxBuf);
+			}
+
+	/*rxID &= 0x1FFFFFFF;
 	if ((rxID & 0xFFFF0000) == 0x05000000) {
 		if (!done) {
 			commands_printf("login");
 			for(int i = 0; i < 6; ++i) {
 				serialNumber[i] = rxBuf[i + 1];
 			}
-
-			for(int i = 0; i < 6; ++i) {
-				logInTxBuf[i] = serialNumber[i];
-			}
-
-			comm_can_transmit_eid_replace(0x05004804, logInTxBuf, 8, false, 0);
-			chThdSleepMilliseconds(100);
+			logIn();			
 			done = true;
 		} else {
-			uint8_t voltageSetTxBuf[5] = {0x29, 0x15, 0x00, VOLTAGE & 0xFF, (VOLTAGE >> 8) & 0xFF};
-			comm_can_transmit_eid_replace(0x05019C00, voltageSetTxBuf, 5, false, 0);
-			commands_printf("set V");
+			setVoltage();
 		}
-	}
+	}*/
 }
 ///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 static THD_FUNCTION(cancom_process_thread, arg) {
