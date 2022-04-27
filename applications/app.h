@@ -92,8 +92,4 @@ void app_custom_start(void);
 void app_custom_stop(void);
 void app_custom_configure(app_configuration *conf);
 
-void app_charger_start(void);
-void app_charger_stop(void);
-void app_charger_configure(app_configuration *conf);
-
 #endif /* APP_H_ */
