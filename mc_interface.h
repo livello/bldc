@@ -22,6 +22,7 @@
 
 #include "conf_general.h"
 #include "hw.h"
+#include "datatypes.h"
 
 // Functions
 void mc_interface_init(void);
@@ -39,6 +40,7 @@ void mc_interface_lock_override_once(void);
 mc_fault_code mc_interface_get_fault(void);
 const char* mc_interface_fault_to_string(mc_fault_code fault);
 mc_state mc_interface_get_state(void);
+mc_control_mode mc_interface_get_control_mode(void);
 void mc_interface_set_duty(float dutyCycle);
 void mc_interface_set_duty_noramp(float dutyCycle);
 void mc_interface_set_pid_speed(float rpm);
@@ -82,7 +84,8 @@ float mc_interface_get_pid_pos_set(void);
 float mc_interface_get_pid_pos_now(void);
 void mc_interface_update_pid_pos_offset(float angle_now, bool store);
 float mc_interface_get_last_sample_adc_isr_duration(void);
-void mc_interface_sample_print_data(debug_sampling_mode mode, uint16_t len, uint8_t decimation, bool raw);
+void mc_interface_sample_print_data(debug_sampling_mode mode, uint16_t len, uint8_t decimation, bool raw, 
+		void(*reply_func)(unsigned char *data, unsigned int len));
 float mc_interface_temp_fet_filtered(void);
 float mc_interface_temp_motor_filtered(void);
 float mc_interface_get_battery_level(float *wh_left);

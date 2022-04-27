@@ -18,7 +18,8 @@ This is the VESC-integration of [lispBM](https://github.com/svenssonjoel/lispBM)
 
 This is the work-in-progress programming manual for LispBM. Note that the examples in the manual use the REPL quite a lot. All of them also work in the VESC Tool REPL (which is below the console below the code editor) when you are connected to a VESC and will be executed on the VESC itself. The results of the commands will be printed in the console. From the VESC Tool REPL you also have access to all functions and variables in the program that you have uploaded to the VESC.
 
-[Chapter 1: Introduction to programming in LispBM](lispBM/doc/manual/ch1_introduction.md)
+[Chapter 1: Introduction to programming in LispBM](lispBM/doc/manual/ch1_introduction.md)  
+[Chapter 2: List Processing](lispBM/doc/manual/ch2_list_processing.md)
 
 ## VESC-Specific Commands and Extensions
 
@@ -268,38 +269,6 @@ Get button and joystick state of connected remote. Note that a remote app such a
 ; bt-z : Z button pressed state, 0 or 1
 ; is-rev : Reverse active, 0 or 1
 ```
-
-#### eeprom-store-f
-
-```clj
-(eeprom-store-f addr number)
-```
-
-Store float number on emulated eeprom at address addr. Addr range: 0 to 63. Note that this will stop the motor briefly as writing to the flash memory cannot be done at the same time as the motor is running.
-
-#### eeprom-read-f
-
-```clj
-(eeprom-read-f addr)
-```
-
-Read float number on emulated eeprom at address addr. Addr range: 0 to 63. If nothing was stored on that address this function returns nil.
-
-#### eeprom-store-i
-
-```clj
-(eeprom-store-i addr number)
-```
-
-Same as eeprom-store-f, but store number as i32 instead of float.
-
-#### eeprom-read-i
-
-```clj
-(eeprom-read-i addr)
-```
-
-Same as eeprom-read-i, but read number as i32 instead of float.
 
 #### sysinfo
 
@@ -902,10 +871,27 @@ Same as uart-read-bytes, but will return when the byte end is read.
 #### i2c-start
 
 ```clj
-(i2c-start)
+(i2c-start optRate optPinSda optPinScl)
 ```
 
-Start the I2C driver on the COMM-port on the VESC. If any app is using the I2C pins it will be stopped first.
+Start the I2C driver on the COMM-port on the VESC. If any app is using the I2C pins it will be stopped first. optRate is an optional argument for the I2C bitrate. optPinSda and optPinScl are optional arguments for using different SDA and SCL pins. Example:
+
+```clj
+(i2c-start 'rate-400k) ; 400 kbps and the default SDA and SDC pins
+(i2c-start 'rate-200k 'pin-swdio 'pin-swclk) ; 100 kbps and SWDIO and SWCLK as SDA and SCL
+
+; Available bitrates
+'rate-100k
+'rate-200k
+'rate-400k
+'rate-700k
+
+; Available pins
+'pin-rx
+'pin-tx
+'pin-swdio
+'pin-swclk
+```
 
 #### i2c-tx-rx
 
@@ -1039,6 +1025,42 @@ Get the value of param. optDefault is an optional argument that can be set to 1 
 ```
 
 Store the current configuration to flash. This will stop the motor.
+
+### EEPROM (Nonvolatile Storage)
+
+Up to 64 variables (int32 or float) can be stored in a nonvolatile space reserved for LsipBM. These variables persist between power cycles and configuration changes, but not between firmware updates. Keep in mind that the motor will be stopped briefly when writing them and that they only can be written a limited number of times (about 100 000 writes) before wear on the flash memory starts to become an issue.
+
+#### eeprom-store-f
+
+```clj
+(eeprom-store-f addr number)
+```
+
+Store float number on emulated eeprom at address addr. Addr range: 0 to 63. Note that this will stop the motor briefly as writing to the flash memory cannot be done at the same time as the motor is running.
+
+#### eeprom-read-f
+
+```clj
+(eeprom-read-f addr)
+```
+
+Read float number on emulated eeprom at address addr. Addr range: 0 to 63. If nothing was stored on that address this function returns nil.
+
+#### eeprom-store-i
+
+```clj
+(eeprom-store-i addr number)
+```
+
+Same as eeprom-store-f, but store number as i32 instead of float.
+
+#### eeprom-read-i
+
+```clj
+(eeprom-read-i addr)
+```
+
+Same as eeprom-read-i, but read number as i32 instead of float.
 
 ### Loops
 
@@ -1690,9 +1712,20 @@ Here are some examples
 (bufset-u16 arr 0 420) ; write 420 to byte 0 and 1 as uint16
 (bufset-u32 arr 0 119) ; write 119 to byte 0 to 3 as uint32
 (bufset-f32 arr 0 3.14) ; write 3.14 to byte 0 to 3 as float32 (IEEE 754)
+(bufset-bit arr 14 1) ; Set bit 14 to 1 (note that this is a bitindex)
 ```
 
 As with bufget big endian is the default byte order and little-endian can be passed as the last argument to use little-endian byte order instead.
+
+#### bufcpy
+
+Copy part of one array into another array.
+
+```clj
+(bufcpy arr1 ind1 arr2 ind2 len)
+```
+
+Copy len bytes from arr2 starting at ind2 to arr1 starting at ind1. Len will be truncated to ensure that nothing is read or written outside of the arrays.
 
 #### free
 

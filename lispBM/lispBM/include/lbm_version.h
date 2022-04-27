@@ -30,7 +30,10 @@
 /*! \page changelog Changelog
 
 
-Apr 12 2022: Version 0.5.2
+Apr 19 2022: Version 0.5.2
+ - Added a reader_done_callback that is run when a context is done
+   with a reading task.
+ - Array-literal syntax.
  - Restructure symbol evaluation for efficiency and readability.
  - Rewrite progn to update stack in place when possible.
  - Removed a bunch of convertion back and forth from C and LBM representation
