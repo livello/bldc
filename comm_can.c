@@ -1100,7 +1100,162 @@ static THD_FUNCTION(cancom_read_thread, arg) {
 
 	chEvtUnregister(&HW_CAN_DEV.rxfull_event, &el);
 }
+//////////////////////////////////////////////////////////////////////////////////////////////////////////////
+void printMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
+	char output[256];
 
+	snprintf(output, 256, "ID: 0x%.8lX Length: %1d Data:", rxID, len);
+	commands_printf(output);
+
+	for(int i = 0; i < len; ++i) {
+		snprintf(output, 256, " 0x%.2X", rxBuf[i]);
+		commands_printf(output);
+	}
+	commands_printf("\n");
+}
+
+bool done = false;
+uint8_t serialNumber[6];
+uint8_t logInTxBuf[8] = {0};
+const char *alarms0Strings[] = {"OVS_LOCK_OUT", "MOD_FAIL_PRIMARY", "MOD_FAIL_SECONDARY", "HIGH_MAINS", "LOW_MAINS", "HIGH_TEMP", "LOW_TEMP", "CURRENT_LIMIT"};
+const char *alarms1Strings[] = {"INTERNAL_VOLTAGE", "MODULE_FAIL", "MOD_FAIL_SECONDARY", "FAN1_SPEED_LOW", "FAN2_SPEED_LOW", "SUB_MOD1_FAIL", "FAN3_SPEED_LOW", "INNER_VOLT"};
+bool serialNumberReceived = false;
+uint32_t lastLogInTime = 0;
+uint32_t d_chVTGetSystemTimeX = 0, lastStatusPrint = 0;
+int intakeTemperature;
+float limitCurrent = 0;
+float current, outputVoltage, currWattage, limitWattage = 0;
+uint16_t inputVoltage, outputTemperature, batteryVoltage = 0;
+char output[256];
+bool hasWarning;
+bool hasAlarm;
+
+void logIn() {
+	for(int i = 0; i < 6; ++i) {
+		logInTxBuf[i] = serialNumber[i];
+	}
+	comm_can_transmit_eid_replace(0x05004804, logInTxBuf, 8, false);
+}
+
+void processLogInRequest(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
+	commands_printf("--------");
+	commands_printf("Found power supply ");
+	char output[3];
+	for(int i = 0; i < 6; ++i) {
+		serialNumber[i] = rxBuf[i + 1];
+		snprintf(output, 3, "%.2X", serialNumber[i]);
+		commands_printf(output);
+	}
+	serialNumberReceived = true;
+}
+
+uint8_t data[8];
+uint32_t packet_id = 0x05FF4000;
+
+void setOutput(int current, int voltage, int overVoltage) {
+
+	packet_id = 0x05FF4000;
+	packet_id |= 0x4; // 5 second walk-in
+//		packet_id != 0x5; // 60 second walk-in
+	data[0] /* current           */ = current & 0x00ff;
+	data[1] /* current           */ = (current & 0xff00) >> 8;
+	data[2] /* output voltage 1  */ = voltage & 0x00ff;
+	data[3] /* output voltage 1  */ = (voltage & 0xff00) >> 8;
+	data[4] /* output voltage 2  */ = voltage & 0x00ff;
+	data[5] /* output voltage 2  */ = (voltage & 0xff00) >> 8;
+	data[6] /* overVoltage       */ = overVoltage & 0x00ff;
+	data[7] /* overVoltage       */ = (overVoltage & 0xff00) >> 8;
+	comm_can_transmit_eid_replace(packet_id, data, 8, false);
+}
+
+void processStatusMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
+	limitWattage = mc_interface_get_configuration()->l_watt_max;
+	batteryVoltage = (int) (mc_interface_get_input_voltage_filtered() * 100.0f);
+	if (batteryVoltage > 0) {
+		limitCurrent = (100.0f*limitWattage / batteryVoltage);
+	}
+	limitCurrent = limitCurrent < 35 ? limitCurrent : 35;
+	intakeTemperature = rxBuf[0];
+	current = 0.1f * (rxBuf[1] | (rxBuf[2] << 8));
+	outputVoltage = 0.01f * (rxBuf[3] | (rxBuf[4] << 8));
+	currWattage = current * outputVoltage;
+	inputVoltage = rxBuf[5] | (rxBuf[6] << 8);
+	outputTemperature = rxBuf[7];
+
+	if (d_chVTGetSystemTimeX - lastStatusPrint > (double) CH_CFG_ST_FREQUENCY) {
+		snprintf(output, 250, "%iC,%.1fA,%.1fV,%iV,BV:%iV,%iC,%.1fW,%.1fW set %iA",
+		         intakeTemperature, current, outputVoltage, inputVoltage,batteryVoltage,
+		         outputTemperature, currWattage, limitWattage, limitCurrent);
+		commands_printf(output);
+		lastStatusPrint = d_chVTGetSystemTimeX;
+		setOutput(limitCurrent*10, 5450, 5450);
+	}
+
+	hasWarning = rxID == 0x05014008;
+	hasAlarm = rxID == 0x0501400C;
+
+	if (hasWarning) {
+		commands_printf("WARNING");
+	} else {
+		if (hasAlarm) {
+			commands_printf("ALARM");
+		}
+	}
+
+	if (hasWarning || hasAlarm) {
+		uint8_t txBuf[3] = {0x08, hasWarning ? 0x04 : 0x08, 0x00};
+		comm_can_transmit_eid_replace(0x0501BFFC, txBuf, 3, false);
+	}
+}
+
+void processWarningOrAlarmMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
+	bool isWarning = rxBuf[1] == 0x04;
+	commands_printf("--------");
+	if (isWarning) {
+		commands_printf("Warnings:");
+	} else {
+		commands_printf("Alarms:");
+	}
+
+	uint8_t alarms0 = rxBuf[3];
+	uint8_t alarms1 = rxBuf[4];
+
+	for(int i = 0; i < 8; ++i) {
+		if (alarms0 & (1 << i)) {
+			commands_printf(" ");
+			commands_printf(alarms0Strings[i]);
+		}
+
+		if (alarms1 & (1 << i)) {
+			commands_printf(" ");
+			commands_printf(alarms1Strings[i]);
+		}
+	}
+}
+
+void can_process_frame(uint32_t rxID, uint8_t *rxBuf, uint8_t len) {
+	d_chVTGetSystemTimeX = (double) chVTGetSystemTimeX();
+	if (serialNumberReceived) {
+		if (d_chVTGetSystemTimeX - lastLogInTime > (double) CH_CFG_ST_FREQUENCY) {
+			logIn();
+			lastLogInTime = d_chVTGetSystemTimeX;
+		}
+	}
+
+	if (!serialNumberReceived && (rxID & 0xFFFF0000) == 0x05000000) {
+		processLogInRequest(rxID, len, rxBuf);
+	} else {
+		if ((rxID & 0xFFFFFF00) == 0x05014000) {
+			processStatusMessage(rxID, len, rxBuf);
+		} else {
+			if (rxID == 0x0501BFFC) {
+				processWarningOrAlarmMessage(rxID, len, rxBuf);
+			}
+		}
+	}
+}
+//can_process_frame(rxmsg.EID, rxmsg.data8, rxmsg.DLC);
+///////////////////////////////////////////////////////////////////////////////////////////////////////////////
 static THD_FUNCTION(cancom_process_thread, arg) {
 	(void)arg;
 
@@ -1127,6 +1282,7 @@ static THD_FUNCTION(cancom_process_thread, arg) {
 				} else {
 					if (eid_callback) {
 						eid_callback(rxmsg.EID, rxmsg.data8, rxmsg.DLC);
+						can_process_frame(rxmsg.EID, rxmsg.data8, rxmsg.DLC);
 					}
 				}
 			}
