@@ -1385,7 +1385,7 @@ void processStatusMessage(uint32_t rxID, uint8_t len, uint8_t rxBuf[]) {
 	outputTemperature = rxBuf[7];
 
 	if (d_chVTGetSystemTimeX - lastStatusPrint > (double) CH_CFG_ST_FREQUENCY) {
-		snprintf(output, 250, "%iC,%.1fA,%.1fV,%iV,BV:%iV,%iC,%.1fW,%.1fW set %iA",
+		snprintf(output, 250, "%iC,%.1fA,%.1fV,%iV,BV:%iV,%iC,%.1fW,%.1fW set %.1fA",
 		         intakeTemperature, current, outputVoltage, inputVoltage,batteryVoltage,
 		         outputTemperature, currWattage, limitWattage, limitCurrent);
 		commands_printf(output);
