@@ -529,7 +529,7 @@
 #endif
 
 #ifndef HW_PAS1_PORT
-#define HW_PAS1_PORT			GPIOA
+#define HW_PAS1_PORT			GPIOC
 #define HW_PAS1_PIN				5
 #define HW_PAS2_PORT			GPIOA
 #define HW_PAS2_PIN				6
