@@ -40,6 +40,7 @@
 #include "spi_bb.h"
 #include "i2c.h"
 #include "confgenerator.h"
+#include "worker.h"
 
 #include <math.h>
 #include <ctype.h>
@@ -80,6 +81,9 @@ typedef struct {
 	lbm_uint pin_tx;
 	lbm_uint pin_swdio;
 	lbm_uint pin_swclk;
+	lbm_uint pin_hall1;
+	lbm_uint pin_hall2;
+	lbm_uint pin_hall3;
 
 	// Settings
 	lbm_uint l_current_min;
@@ -90,6 +94,10 @@ typedef struct {
 	lbm_uint l_in_current_max;
 	lbm_uint l_min_erpm;
 	lbm_uint l_max_erpm;
+	lbm_uint l_min_vin;
+	lbm_uint l_max_vin;
+	lbm_uint l_min_duty;
+	lbm_uint l_max_duty;
 	lbm_uint l_watt_min;
 	lbm_uint l_watt_max;
 	lbm_uint foc_current_kp;
@@ -201,6 +209,12 @@ static bool compare_symbol(lbm_uint sym, lbm_uint *comp) {
 			get_add_symbol("pin-swdio", comp);
 		} else if (comp == &syms_vesc.pin_swclk) {
 			get_add_symbol("pin-swclk", comp);
+		} else if (comp == &syms_vesc.pin_hall1) {
+			get_add_symbol("pin-hall1", comp);
+		} else if (comp == &syms_vesc.pin_hall2) {
+			get_add_symbol("pin-hall2", comp);
+		} else if (comp == &syms_vesc.pin_hall3) {
+			get_add_symbol("pin-hall3", comp);
 		}
 
 		else if (comp == &syms_vesc.l_current_min) {
@@ -219,6 +233,14 @@ static bool compare_symbol(lbm_uint sym, lbm_uint *comp) {
 			get_add_symbol("l-min-erpm", comp);
 		} else if (comp == &syms_vesc.l_max_erpm) {
 			get_add_symbol("l-max-erpm", comp);
+		} else if (comp == &syms_vesc.l_min_vin) {
+			get_add_symbol("l-min-vin", comp);
+		} else if (comp == &syms_vesc.l_max_vin) {
+			get_add_symbol("l-max-vin", comp);
+		} else if (comp == &syms_vesc.l_min_duty) {
+			get_add_symbol("l-min-duty", comp);
+		} else if (comp == &syms_vesc.l_max_duty) {
+			get_add_symbol("l-max-duty", comp);
 		} else if (comp == &syms_vesc.l_watt_min) {
 			get_add_symbol("l-watt-min", comp);
 		} else if (comp == &syms_vesc.l_watt_max) {
@@ -306,6 +328,15 @@ static bool gpio_get_pin(lbm_uint sym, stm32_gpio_t **port, int *pin) {
 		return true;
 	} else if (compare_symbol(sym, &syms_vesc.pin_swclk)) {
 		*port = GPIOA; *pin = 14;
+		return true;
+	} else if (compare_symbol(sym, &syms_vesc.pin_hall1)) {
+		*port = HW_HALL_ENC_GPIO1; *pin = HW_HALL_ENC_PIN1;
+		return true;
+	} else if (compare_symbol(sym, &syms_vesc.pin_hall2)) {
+		*port = HW_HALL_ENC_GPIO2; *pin = HW_HALL_ENC_PIN2;
+		return true;
+	} else if (compare_symbol(sym, &syms_vesc.pin_hall3)) {
+		*port = HW_HALL_ENC_GPIO3; *pin = HW_HALL_ENC_PIN3;
 		return true;
 	}
 
@@ -1672,6 +1703,15 @@ static lbm_value ext_uart_start(lbm_value *args, lbm_uint argn) {
 	return lbm_enc_sym(SYM_TRUE);
 }
 
+static void wait_uart_tx_task(void *arg) {
+	(void)arg;
+	while(!chOQIsEmptyI(&HW_UART_DEV.oqueue)){
+		chThdSleepMilliseconds(1);
+	}
+	chThdSleepMilliseconds(1);
+	HW_UART_DEV.usart->CR1 |= USART_CR1_RE;
+}
+
 static lbm_value ext_uart_write(lbm_value *args, lbm_uint argn) {
 	if (argn != 1 || (lbm_type_of(args[0]) != LBM_TYPE_CONS && lbm_type_of(args[0]) != LBM_TYPE_ARRAY)) {
 		return lbm_enc_sym(SYM_EERROR);
@@ -1713,15 +1753,11 @@ static lbm_value ext_uart_write(lbm_value *args, lbm_uint argn) {
 		}
 	}
 
-	if(uart_cfg.cr3 && USART_CR3_HDSEL){
+	if (uart_cfg.cr3 & USART_CR3_HDSEL) {
 		HW_UART_DEV.usart->CR1 &= ~USART_CR1_RE;
 		sdWrite(&HW_UART_DEV, to_send_ptr, ind);
-		while(!chOQIsEmptyI(&HW_UART_DEV.oqueue)){
-			chThdSleepMilliseconds(1);
-		}
-		chThdSleepMilliseconds(1);
-		HW_UART_DEV.usart->CR1 |= USART_CR1_RE;
-	}else{
+		worker_execute(wait_uart_tx_task, 0);
+	} else{
 		sdWrite(&HW_UART_DEV, to_send_ptr, ind);
 	}
 
@@ -2016,7 +2052,7 @@ static lbm_value ext_str_from_n(lbm_value *args, lbm_uint argn) {
 	switch (lbm_type_of(args[0])) {
 	case LBM_TYPE_FLOAT:
 		if (!format) {
-			format = "%f";
+			format = "%g";
 		}
 		len = snprintf(buffer, sizeof(buffer), format, (double)lbm_dec_as_float(args[0]));
 		break;
@@ -2403,6 +2439,18 @@ static lbm_value ext_conf_set(lbm_value *args, lbm_uint argn) {
 	} else if (compare_symbol(name, &syms_vesc.l_max_erpm)) {
 		mcconf->l_max_erpm = lbm_dec_as_float(args[1]);
 		changed_mc = 1;
+	} else if (compare_symbol(name, &syms_vesc.l_min_vin)) {
+		mcconf->l_min_vin = lbm_dec_as_float(args[1]);
+		changed_mc = 1;
+	} else if (compare_symbol(name, &syms_vesc.l_max_vin)) {
+		mcconf->l_max_vin = lbm_dec_as_float(args[1]);
+		changed_mc = 1;
+	} else if (compare_symbol(name, &syms_vesc.l_min_duty)) {
+		mcconf->l_min_duty = lbm_dec_as_float(args[1]);
+		changed_mc = 1;
+	} else if (compare_symbol(name, &syms_vesc.l_max_duty)) {
+		mcconf->l_max_duty = lbm_dec_as_float(args[1]);
+		changed_mc = 1;
 	} else if (compare_symbol(name, &syms_vesc.min_speed)) {
 		mcconf->l_min_erpm = -fabsf(lbm_dec_as_float(args[1])) * speed_fact;
 		changed_mc = 1;
@@ -2529,6 +2577,14 @@ static lbm_value ext_conf_get(lbm_value *args, lbm_uint argn) {
 		res = lbm_enc_float(mcconf->l_min_erpm);
 	} else if (compare_symbol(name, &syms_vesc.l_max_erpm)) {
 		res = lbm_enc_float(mcconf->l_max_erpm);
+	} else if (compare_symbol(name, &syms_vesc.l_min_vin)) {
+		res = lbm_enc_float(mcconf->l_min_vin);
+	} else if (compare_symbol(name, &syms_vesc.l_max_vin)) {
+		res = lbm_enc_float(mcconf->l_max_vin);
+	} else if (compare_symbol(name, &syms_vesc.l_min_duty)) {
+		res = lbm_enc_float(mcconf->l_min_duty);
+	} else if (compare_symbol(name, &syms_vesc.l_max_duty)) {
+		res = lbm_enc_float(mcconf->l_max_duty);
 	} else if (compare_symbol(name, &syms_vesc.l_watt_min)) {
 		res = lbm_enc_float(mcconf->l_watt_min);
 	} else if (compare_symbol(name, &syms_vesc.l_watt_max)) {
