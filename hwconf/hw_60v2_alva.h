@@ -106,11 +106,11 @@
 #define ADC_IND_CURR2			4
 #define ADC_IND_CURR3			5
 #define ADC_IND_VIN_SENS		11
-#define ADC_IND_EXT				6
+#define ADC_IND_EXT				10
 #define ADC_IND_EXT2			7
 #define ADC_IND_TEMP_MOS		8
 #define ADC_IND_TEMP_MOTOR		9
-#define ADC_IND_TEMP_MOTOR_S2	10
+#define ADC_IND_TEMP_MOTOR_S2	6
 #define ADC_IND_VREFINT			12
 
 // ADC macros and settings
