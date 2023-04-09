@@ -96,10 +96,12 @@ void app_set_configuration(app_configuration *conf) {
 		switch (appconf.app_to_use) {
 		case APP_PPM:
 			app_ppm_start();
+			app_uartcomm_start(UART_PORT_COMM_HEADER);
 			break;
 
 		case APP_ADC:
 			app_adc_start(true);
+			app_uartcomm_start(UART_PORT_COMM_HEADER);
 			break;
 
 		case APP_UART:
@@ -121,6 +123,7 @@ void app_set_configuration(app_configuration *conf) {
 
 		case APP_NUNCHUK:
 			app_nunchuk_start();
+			app_uartcomm_start(UART_PORT_COMM_HEADER);
 			break;
 
 		case APP_BALANCE:
@@ -133,11 +136,13 @@ void app_set_configuration(app_configuration *conf) {
 
 		case APP_PAS:
 			app_pas_start(true);
+			app_uartcomm_start(UART_PORT_COMM_HEADER);
 			break;
 
 		case APP_ADC_PAS:
 			app_adc_start(false);
 			app_pas_start(false);
+			app_uartcomm_start(UART_PORT_COMM_HEADER);
 			break;
 
 		case APP_NRF:
