@@ -21,6 +21,13 @@
 
 #include <stdbool.h>
 
-bool lbm_math_extensions_init(void);
+#ifdef __cplusplus
+extern "C" {
+#endif
 
+void lbm_math_extensions_init(void);
+
+#ifdef __cplusplus
+}
+#endif
 #endif

@@ -1,6 +1,6 @@
 /** \file extensions.h */
 /*
-    Copyright 2019, 2022 Joel Svensson        svenssonjoel@yahoo.se
+    Copyright 2019, 2022, 2024 Joel Svensson        svenssonjoel@yahoo.se
                     2022 Benjamin Vedder
 
     This program is free software: you can redistribute it and/or modify
@@ -20,12 +20,13 @@
 #ifndef EXTENSIONS_H_
 #define EXTENSIONS_H_
 
-#include "symrepr.h"
 #include "heap.h"
 #include "lbm_types.h"
+#include "lbm_constants.h"
 
-#define LBM_EXTENSION(name, argv, argn)                                 \
-  __attribute__((aligned(LBM_STORABLE_ADDRESS_ALIGNMENT))) lbm_value name(lbm_value *(argv), lbm_uint (argn)) 
+#ifdef __cplusplus
+extern "C" {
+#endif
 
 /** Type representing an extension function.
  * \param Pointer to array of lbm_values.
@@ -34,25 +35,63 @@
  */
 typedef lbm_value (*extension_fptr)(lbm_value*,lbm_uint);
 
-/** Initialize the extensions subsystem.
- *
- * \param extension_storage Pointer to array of extension_fptr.
- * \param extension_storage_size Size of function pointer array.
- * \return 1 on success and 0 for failure
+/** Type representing an entry in the extension table
  */
-extern int lbm_extensions_init(extension_fptr *extension_storage, int extension_storage_size);
+typedef struct {
+  extension_fptr fptr;
+  char *name;
+} lbm_extension_t;
+
+
+extern lbm_extension_t *extension_table;
+
+#define LBM_EXTENSION(name, argv, argn)                                 \
+  __attribute__((aligned(LBM_STORABLE_ADDRESS_ALIGNMENT))) lbm_value name(lbm_value *(argv), lbm_uint (argn))
+
+/** Initialize the extensions subsystem. Extension storage is allocated on lbm_memory.
+ *
+ * \param extension_storage_size Size of function pointer array.
+ * \return true on success and false for failure
+ */
+bool lbm_extensions_init(lbm_extension_t *extension_storage, lbm_uint extension_storage_size);
+/** Set the next index to be given out to the next added extension.
+ * \param i Next index.
+ */
+void lbm_extensions_set_next(lbm_uint i);
+/** The number of extensions that can be allocated.
+ * \return The maximum number of extensions that can be added.
+ */
+lbm_uint lbm_get_max_extensions(void);
+/** Get the number of allocated extensions
+ * \return The number of extensions that have been added.
+ */
+lbm_uint lbm_get_num_extensions(void);
+/** Lookup an extensions index.
+ * \param sym_str Extension name to look up.
+ * \param ix Pointer used to store result.
+ * \return true on success, false otherwise.
+ */
+bool lbm_lookup_extension_id(char *sym_str, lbm_uint *ix);
 /** Look up an extension associated with a key symbol.
  *
  * \param sym Symbol bound to the extension to look for.
  * \return extension_fptr on success or NULL on failure.
  */
-extern extension_fptr lbm_get_extension(lbm_uint sym);
+extension_fptr lbm_get_extension(lbm_uint sym);
+/** Reset an extension back to the default value.
+ *  Trying to apply the extension after clearing it will result
+ *  in an eval error.
+ *
+ * \param sym_id Symbol id of the extension to clear.
+ * \return true if successfully cleared an extension otherwise false.
+ */
+bool lbm_clr_extension(lbm_uint sym_id);
 /** Adds a symbol-extension mapping.
  * \param sym_str String representation of symbol to use as key.
  * \param ext The extension function pointer.
  * \return true on success and false on failure.
  */
-extern bool lbm_add_extension(char *sym_str, extension_fptr ext);
+bool lbm_add_extension(char *sym_str, extension_fptr ext);
 
 /** Check if an lbm_value is a symbol that is bound to an extension.
  * \param exp Key to look up.
@@ -60,6 +99,163 @@ extern bool lbm_add_extension(char *sym_str, extension_fptr ext);
  */
 static inline bool lbm_is_extension(lbm_value exp) {
   return ((lbm_type_of(exp) == LBM_TYPE_SYMBOL) &&
-          (lbm_get_extension(lbm_dec_sym(exp)) != NULL));
+          ((lbm_dec_sym(exp) - EXTENSION_SYMBOLS_START) < lbm_get_num_extensions()));
 }
+
+/** Check if all arguments are numbers. Sets error-reason if result is false.
+ * \param args The argument array.
+ * \param argn The number of arguments.
+ * \return true if all arguments are numbers, false otherwise.
+ */
+bool lbm_check_number_all(lbm_value *args, lbm_uint argn);
+/** Check if the number of arguments is n. Sets error-reason if result is false.
+ * \param argn number of arguments.
+ * \param n number of expected arguments.
+ * \return true if the number of arguments is correct. false otherwise
+ */
+bool lbm_check_argn(lbm_uint argn, lbm_uint n);
+/** Check if all arguments are numbers and that there is n of them. Sets error-reason if result is false.
+ * \param args The argument array.
+ * \param argn The number of arguments.
+ * \param n The expected number of arguments.
+ * \return true or false.
+ */
+bool lbm_check_argn_number(lbm_value *args, lbm_uint argn, lbm_uint n);
+
+#define LBM_CHECK_NUMBER_ALL() if (!lbm_check_number_all(args, argn)) {return ENC_SYM_EERROR;}
+#define LBM_CHECK_ARGN(n) if (!lbm_check_argn(argn, n)) {return ENC_SYM_EERROR;}
+#define LBM_CHECK_ARGN_NUMBER(n) if (!lbm_check_argn_number(args, argn, n)) {return ENC_SYM_EERROR;}
+
+lbm_value lbm_extensions_default(lbm_value *args, lbm_uint argn);
+
+// Extension writing helpers
+
+/** Create a list.
+ *
+ * \evalthread
+ *
+ * \param num The number of elements to allocate space for.
+ * \param ... The elements to initialize the list with.
+ * \return the list or MERROR.
+ */
+extern lbm_value make_list(int num, ...);
+
+/** Compare strings for equality
+ *  Compares two strings up to the length of the first of string arguments.
+ *
+ * \param str1 First string to match against a prefix of second.
+ * \param str2 Second string.
+ * \return true is str1 matches the prefix of str2.
+ */
+extern bool strmatch(const char *str1, const char *str2);
+
+/** Create a lambda given argument list and body
+ *
+ * \evalthread
+ *
+ * \param args Argument list.
+ * \param body Function body.
+ * \return Lambda or MERROR.
+ */
+static inline lbm_value mk_lam(lbm_value args, lbm_value body) {
+  return make_list(3, ENC_SYM_LAMBDA, args, body);
+}
+
+/** Create a call-cc given a body expression. The body should
+ *  be a lambda expression taking a continuation.
+ *
+ * \evalthread
+ *
+ * \param body Call-cc body expression.
+ * \return Call-cc expression or MERROR.
+ */
+static inline lbm_value mk_call_cc(lbm_value body) {
+  return make_list(2, ENC_SYM_CALL_CC_UNSAFE, body);
+}
+
+/** Create a let expression given bindings list and body
+ *
+ * \evalthread
+ *
+ * \param bindings List of bindings.
+ * \param body Expression to evaluate in the extended environment.
+ * \return Let expression or MERROR.
+ */
+static inline lbm_value mk_let(lbm_value bindings, lbm_value body) {
+  return make_list(3, ENC_SYM_LET, bindings, body);
+}
+
+/** Create an if expression given condition, then-branch and else-branch
+ *
+ * \evalthread
+ *
+ * \param cond Boolean condition expression.
+ * \param tb   Then-branch expression.
+ * \param fb   Else-branch expression.
+ * \return If expression or MERROR.
+ */
+static inline lbm_value mk_if(lbm_value cond, lbm_value tb, lbm_value fb) {
+  return make_list(4, ENC_SYM_IF, cond, tb, fb);
+}
+
+/** Create an expression that adds one to a value.
+ *
+ * \evalthread
+ *
+ * \param v Value to add one to.
+ * \return increment expression or MERROR.
+ */
+static inline lbm_value mk_inc(lbm_value v) {
+  return make_list(3, ENC_SYM_ADD, v, lbm_enc_i(1));
+}
+
+/** Create an expression that compares less-than
+ *
+ * \evalthread
+ *
+ * \param a Value expression.
+ * \param b Value expression.
+ * \return less-than comparison expression or MERROR.
+ */
+static inline lbm_value mk_lt(lbm_value a, lbm_value b) {
+  return make_list(3, ENC_SYM_LT, a, b);
+}
+
+/** Create an expression that compares equality
+ *
+ * \evalthread
+ *
+ * \param a Value expression.
+ * \param b Value expression.
+ * \return equality comparison expression or MERROR.
+ */
+static inline lbm_value mk_eq(lbm_value a, lbm_value b) {
+  return make_list(3, ENC_SYM_EQ, a, b);
+}
+
+/** Create an expression that takes the car of an expression
+ *
+ * \evalthread
+ *
+ * \param a Value expression.
+ * \return Expression that takes the car or the value.
+ */
+static inline lbm_value mk_car(lbm_value a) {
+  return make_list(2, ENC_SYM_CAR, a);
+}
+
+/** Create an expression that takes the cdr of an expression
+ *
+ * \evalthread
+ *
+ * \param a Value expression.
+ * \return Expression that takes the cdr or the value.
+ */
+static inline lbm_value mk_cdr(lbm_value a) {
+  return make_list(2, ENC_SYM_CDR, a);
+}
+
+#ifdef __cplusplus
+}
+#endif
 #endif

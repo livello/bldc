@@ -1,111 +1,97 @@
-# lispBM (Lisp Black Magic)
+[![Website](https://img.shields.io/badge/Website-lispbm.com-blue)](https://www.lispbm.com)
+[![Documentation](https://img.shields.io/badge/docs-latest-brightgreen)](https://www.lispbm.com/#documentation)
+[![Discord](https://img.shields.io/badge/Discord-Join%20Server-7289da?logo=discord&logoColor=white)](https://discord.gg/urtJUUMnwQ)
+[![Gallery](https://img.shields.io/badge/Gallery-Community%20Projects-green?logo=image)](https://www.lispbm.com/gallery.html)
+[![Contributors](https://img.shields.io/badge/Contributors-Meet%20Our%20Team-blue?logo=github)](https://www.lispbm.com/contributors.html)
 
-A concurrent lisp-like language with message-passing and
-pattern-matching implemented in C for 32 bit and 64 bit platforms.
+# lispBM (LBM)
+
+LispBM is a lisp or scheme like programming language for
+microcontrollers.  LispBM also borrows a couple of ideas from Erlang
+when it comes to concurrency, message passing, pattern matching and
+process monitoring.  The LispBM runtime system can be compiled for
+either 32 or 64 bit platforms and runs on a wide range of hardware
+such as for example STM32, NRF52, ESP32 or X86.  When running the
+LispBM runtime system on a microcontroller it can be built on top of
+ChibiOS, FreeRTOS or ZephyrOS or, if you are adventurous, on bare-metal.
+LispBM can also be built to run on top of a regular linux.
+
+LispBM is an embeddable scripting language meant to be integrated into
+a larger application. Our goal is that LispBM is a suitably sandboxed scripting
+language to be used in just about any application domain.
 
 ![LispBM mascot](https://github.com/svenssonjoel/lispBM/blob/master/mascot/lispbm_llama_small.png)
 
-All programming languages need a mascot, so here is the LispBM llama by [PixiLady](https://www.instagram.com/pixiladyart/).
+The LispBM mascot, Lispy the llama, was created by
+[PixiLadyArt](https://www.instagram.com/pixiladyart/). Thank you, Pixi! 
 
-## Documentation
- - Work in progress [LispBM language reference](./doc/lbmref.md).
- - Work in progress [LispBM programming manual](./doc/manual)
- - C code documentation can be found [here](http://svenssonjoel.github.io/lbmdoc/html/index.html).
- - LispBM's internals are documented as a series of [blog posts](http://svenssonjoel.github.io).
+## Contribute to LispBM!
+LispBM is an open source project and welcomes collaboration and contribution.
+Do you want to get involved and help out?
+
+ - Check out the [lispbm.com](http://www.lispbm.com) website.
+ - Join the [discord server](https://discord.gg/urtJUUMnwQ).
+
+## Getting started 
+
+The easiest way to get started with LispBM programming is to use
+[VESC-Tool](https://vesc-project.com/vesc_tool) together with the
+[VESC EXPRESS Firmware](https://github.com/vedderb/vesc_express) on an [esp32c3](https://docs.espressif.com/projects/esp-idf/en/latest/esp32c3/hw-reference/esp32c3/user-guide-devkitm-1.html).
+
+VESC-Tool gives you access to a very capable [IDE](https://vesc-project.com/sites/default/files/lisp%20overview.png) for lisp programming on embedded systems
+and the VESC Express firmware provides built in functionality to interface with CAN, WIFI, BLE and UART
+as well as GPIO and display drivers.
+
+If you are looking for a more bare-bones way to add scripting capabilities to your
+embedded system, LispBM is quite platform independent and can be compiled for many
+different MCUs and systems. LispBM can tie into the rest of your application via
+what we call "extensions" which are C functions that can be called from your LispBM scripts. 
+
+### Documentation
+
+ - [LispBM language reference](./doc/lbmref.md).
+ - [Display library reference](./doc/displayref.md).
+ - [TrueType Font (TTF) library reference](./doc/ttfref.md).
+ - [Runtime system library reference](./doc/runtimeref.md).
+ - [Dynlib reference](./doc/dynref.md).
+ - [Gotchas and caveats](./doc/gotchas.md).
+ - C code documentation can be found [here](http://lispbm.com/cdocs/html/index.html).
+ - LispBM's internals are documented as a series of (now quite outdated) [blog posts](http://svenssonjoel.github.io).
  - There are [demonstrations on YouTube](https://youtube.com/playlist?list=PLtf_3TaqZoDOQqZcB9Yj-R1zS2DWDZ9q9).
 
+## The LBM REPL
 
-## Purpose
-1. Have fun.
-2. Learn about lisp.
-3. Learn about microcontrollers.
-4. An interactive REPL for devboards.
-5. ...
-
-## Features
-1. heap consisting of cons-cells with mark and sweep garbage collection.
-2. Built-in functions: cons, car, cdr, eval, list, +, -, >, <, = and more.
-3. Some special forms: Lambdas, closures, lets (letrecs), define and quote.
-4. 28-Bit signed/unsigned integers and boxed 32-Bit Float, 32-Bit signed/unsigned values.
-5. Arrays (in progress), string is an array.
-6. Compiles for, and runs on linux-x86.
-7. Compiles for, and runs on Zynq 7000.
-8. Compiles for, and runs on STM32f4.
-9. Compiles for, and runs on NRF52840.
-10. Compiles for, and runs on ESP32 (ARM - WROOM).
-11. Compiles for, and runs on ESP32C3 (RISC-V).
-12. Compiles for, and runs on Raspberry PI (Tested on 32bit Raspbian OS)
-13. Quasiquotation.
-14. Concurrency.
-15. Message-passing.
-16. Pattern-matching.
-
-## Want to get involved and help out?
-1. Are you interested in microcontrollers and programming languages?
-2. You find it fun to mess around in C code with close to zero comments?
-3. Then join in the fun. Lots to do, so little time!
-4. Poke me by mail bo(dot)joel(dot)svensson(whirly-a)gmail(dot)com
-
-## TODOs
-1. [x] Write some tests that stresses the Garbage collector.
-2. [x] Implement some "reference to X type", for uint32, int32.
-3. [x] Write a small library of useful hofs.
-4. [x] Improve handling of arguments in eval-cps.
-5. [x] Code improvements with simplicity, clarity  and readability in mind.
-6. [x] Implement a small dedicated lisp reader/parser to replace MPC. MPC eats way to much memory for small platforms.
-7. [x] Port to STM32f4 - 128K ram platform (will need big changes). (surely there will be some more bugs)
-8. [x] Add STM32f4 example code (repl implementation)
-9. [x] Port to nrf52840_pca10056 - 256k ram platform (same changes as above).
-10. [x] Reduce size of builtins.c and put platform specific built in functions elsewhere. (Builtins.c will be removed an replaced by fundamentals.c) 
-11. [x] Implement 'progn' facility.
-12. [x] Remove the "gensym" functionality havent found a use for it so far and it only complicates things.
-13. [x] Add NRF52 example repl to repository
-14. [x] Update all example REPLs after adding quasiquotation
-15. [x] The parser allocates heap memory, but there is no interfacing with the GC there.
-16. [x] The parser uses a lot of stack memory, fix by making tail recursive and accumulating lists onto heap directly. 
-17. [x] Rename files with names that may conflict with common stuff (memory.h, memory.c). 
-18. [x] It should be possible to reset the runtime system.
-19. [x] Add messages to lisp process mailbox from C to unlock blocked proc.
-20. [x] Spawn closures specifically instead of expressions in general.
-21. [x] Implement some looping structure for speed or just ease of use. 
-        See the loop macros implemented by Benjamin in [bldc](https://github.com/vedderb/bldc/blob/master/lispBM/lispif_vesc_dynamic_loader.c#L103).
-        
-
-## Vague or continuosly ongoing todos
-1. Doxygen?
-2. Tutorials?
-3. Be much more stringent on checking of error conditions etc.
-4. More built in arithmetic.
-5. More built in comparisons.
-6. Make uniform how to return success or failure. It is sometimes bool and sometimes int right now. 
+There is an example REPL implementation that runs on X86 32 or 64bit in the `repl` directory.
+The REPL depends on libreadline.
 
 
-## Compile a 32bit binary for linux (Requires 32bit libraries. May need something like "multilib" on a 64bit linux)
+**REPL Dependencies for 32Bit executable on 64Bit linux:**
+* libreadline
+* lib32readline
+* gcc-multilib
+* libpng
 
-1. Build the repl: `cd repl-cps` and then `make`
-
-2. Run the repl: `./repl`
-
-## Compile a 64bit binary for linux
-
-1. Build the repl: `cd repl-cps` and then `make all64`
-
-2. Run the repl: `./repl`
-
-## Compile on Raspberry Pi
-
-To build the library exeute the following command in the lispbm folder:
-
-```
-PLATFORM=pi make
+On Ubuntu you can obtain the depencies by:
+```shell
+sudo apt-get install gcc-multilib libreadline-dev lib32readline-dev libpng-dev libpng-dev:i386
 ```
 
-To build the `repl-cps` example repl do:
+Then issue command `make` in the repl directory.
 
-```
-cd repl-cps
-make pirepl
+There is also a Nix flake (see details below). You can build and run the repl using `nix run`. This will build the 32 bit version. For the 64 bit repl you instead run `nix run .#repl64`.
+
+### Editor support
+
+* [vesc_tool](https://vesc-project.com/vesc_tool)
+* [vscode support](https://marketplace.visualstudio.com/items?itemName=rasmus-soderhielm.lispbm-language-support)
+* [zed](https://github.com/cortex/zed-lispbm)
+* [Tree-sitter](https://github.com/cortex/tree-sitter-lispbm)
+
+## Development
+
+There is a Nix flake to help you build the repl and documentation. It outputs packages for the 32 and 64 bit repl: `repl` and `repl64`, the documentation: `doc`, and the doxygen source code documentation: `c-doc`. Assuming you have Nix installed, you can build these using
+```shell
+nix build .#<package>
 ```
 
-Then start it up using `./repl`
-Building the library is not a prerequisite for building the repl anymore.
+The generated output is then placed in the `result/` directory. However `doc` and `c-doc` packages might not make much sense to build in this way because they are supposed to generate files inside the repository tree. Therefore, it makes more sense to instead enter their respective development environment with `nix develop .#<package>`. This places you in a new shell with the required dependencies installed where you can build them with `make`. 

@@ -32,8 +32,11 @@
 #include <math.h>
 #include <string.h>
 
-#define SINCOS_MIN_AMPLITUDE        1.0         // sqrt(sin^2 + cos^2) has to be larger than this
-#define SINCOS_MAX_AMPLITUDE        1.65        // sqrt(sin^2 + cos^2) has to be smaller than this
+#define SINCOS_MIN_AMPLITUDE        0.7         // sqrt(sin^2 + cos^2) has to be larger than this
+#define SINCOS_MAX_AMPLITUDE        1.3         // sqrt(sin^2 + cos^2) has to be smaller than this
+
+#define PROFILE_LINE()
+//#define PROFILE_LINE() FOC_PROFILE_LINE()
 
 bool enc_sincos_init(ENCSINCOS_config_t *cfg) {
 	memset(&cfg->state, 0, sizeof(ENCSINCOS_state));
@@ -45,9 +48,22 @@ void enc_sincos_deinit(ENCSINCOS_config_t *cfg) {
 }
 
 float enc_sincos_read_deg(ENCSINCOS_config_t *cfg) {
-	float angle = 0.0;
-	float sin = ENCODER_SIN_VOLTS * cfg->s_gain - cfg->s_offset;
-	float cos = ENCODER_COS_VOLTS * cfg->c_gain - cfg->c_offset;
+	PROFILE_LINE();
+
+	float sin = (ENCODER_SIN_VOLTS - cfg->s_offset) * cfg->s_gain;
+	float cos = (ENCODER_COS_VOLTS - cfg->c_offset) * cfg->c_gain;
+
+	UTILS_LP_FAST(cfg->state.sin_filter, sin, cfg->filter_constant);
+	UTILS_LP_FAST(cfg->state.cos_filter, cos, cfg->filter_constant);
+	sin = cfg->state.sin_filter;
+	cos = cfg->state.cos_filter;
+
+	PROFILE_LINE();
+
+	// phase error compensation
+	cos = (cos + sin * cfg->sph) / cfg->cph;
+
+	PROFILE_LINE();
 
 	float module = SQ(sin) + SQ(cos);
 
@@ -57,25 +73,29 @@ float enc_sincos_read_deg(ENCSINCOS_config_t *cfg) {
 	}
 	cfg->state.last_update_time = timer_time_now();
 
+	PROFILE_LINE();
+
 	if (module > SQ(SINCOS_MAX_AMPLITUDE) )	{
 		// signals vector outside of the valid area. Increase error count and discard measurement
 		++cfg->state.signal_above_max_error_cnt;
 		UTILS_LP_FAST(cfg->state.signal_above_max_error_rate, 1.0, timestep);
-		angle = cfg->state.last_enc_angle;
+	} else if (module < SQ(SINCOS_MIN_AMPLITUDE)) {
+		++cfg->state.signal_below_min_error_cnt;
+		UTILS_LP_FAST(cfg->state.signal_low_error_rate, 1.0, timestep);
 	} else {
-		if (module < SQ(SINCOS_MIN_AMPLITUDE)) {
-			++cfg->state.signal_below_min_error_cnt;
-			UTILS_LP_FAST(cfg->state.signal_low_error_rate, 1.0, timestep);
-			angle = cfg->state.last_enc_angle;
-		} else {
-			UTILS_LP_FAST(cfg->state.signal_above_max_error_rate, 0.0, timestep);
-			UTILS_LP_FAST(cfg->state.signal_low_error_rate, 0.0, timestep);
+		UTILS_LP_FAST(cfg->state.signal_above_max_error_rate, 0.0, timestep);
+		UTILS_LP_FAST(cfg->state.signal_low_error_rate, 0.0, timestep);
 
-			float angle_tmp = RAD2DEG_f(utils_fast_atan2(sin, cos));
-			UTILS_LP_FAST(angle, angle_tmp, cfg->filter_constant);
-			cfg->state.last_enc_angle = angle;
-		}
+		PROFILE_LINE();
+		float delay_comp = ((1.0 - cfg->filter_constant) * RPM2RADPS_f(mc_interface_get_rpm()) * timestep) / (cfg->filter_constant * cfg->ratio);
+		PROFILE_LINE();
+		float angle = RAD2DEG_f(utils_fast_atan2(sin, cos) + delay_comp * cfg->delay_comp_sign) + 180.0;
+		PROFILE_LINE();
+		utils_norm_angle(&angle);
+		PROFILE_LINE();
+
+		cfg->state.last_enc_angle = angle;
 	}
 
-	return angle;
+	return cfg->state.last_enc_angle;
 }

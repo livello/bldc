@@ -26,13 +26,14 @@
 MEMORY
 {
     flash : org = 0x08000000, len = 16k
-    flash2 : org = 0x0800C000, len = 524288 - 16	/* NEW_APP_MAX_SIZE - CRC_INFO */
+    flash2 : org = 0x0800C000, len = 512k - 48k - 16	/* NEW_APP_MAX_SIZE - CRC_INFO */
 	crcinfo : org = 0x0807FFF0, len = 8		/* CRC info */
     ram0  : org = 0x20000000, len = 128k    /* SRAM1 + SRAM2 */
     ram1  : org = 0x20000000, len = 112k    /* SRAM1 */
     ram2  : org = 0x2001C000, len = 16k     /* SRAM2 */
     ram3  : org = 0x00000000, len = 0
-    ram4  : org = 0x10000000, len = 64k     /* CCM SRAM */
+    ram4  : org = 0x10000000, len = 62k     /* CCM SRAM */
+    libif : org = 0x1000F800, len = 2k
     ram5  : org = 0x40024000, len = 4k      /* BCKP SRAM */
     ram6  : org = 0x00000000, len = 0
     ram7  : org = 0x00000000, len = 0
@@ -115,6 +116,12 @@ SECTIONS
         *(.glue_7)
         *(.gcc*)
     } > flash2
+
+    .text2 : ALIGN(16) SUBALIGN(16)
+    {
+        *(.text2)
+        *(.text2.*)
+    } > flash
 
     .ARM.extab :
     {
@@ -239,6 +246,12 @@ SECTIONS
         . = ALIGN(4);
         __ram4_free__ = .;
     } > ram4
+    
+    .libif (NOLOAD) : ALIGN(4)
+    {
+        . = ALIGN(4);
+        *(.libif)
+    } > libif
 
     .ram5 (NOLOAD) : ALIGN(4)
     {

@@ -114,7 +114,7 @@ ASFLAGS   = $(MCFLAGS) -Wa,-amhls=$(LSTDIR)/$(notdir $(<:.s=.lst)) $(ADEFS)
 ASXFLAGS  = $(MCFLAGS) -Wa,-amhls=$(LSTDIR)/$(notdir $(<:.S=.lst)) $(ADEFS)
 CFLAGS    = $(MCFLAGS) $(OPT) $(COPT) $(CWARN) -Wa,-alms=$(LSTDIR)/$(notdir $(<:.c=.lst)) $(DEFS)
 CPPFLAGS  = $(MCFLAGS) $(OPT) $(CPPOPT) $(CPPWARN) -Wa,-alms=$(LSTDIR)/$(notdir $(<:.cpp=.lst)) $(DEFS)
-LDFLAGS   = $(MCFLAGS) $(OPT) -nostartfiles $(LLIBDIR) -Wl,-Map=$(BUILDDIR)/$(PROJECT).map,--cref,--no-warn-mismatch,--library-path=$(RULESPATH),--script=$(LDSCRIPT)$(LDOPT)
+LDFLAGS   = $(MCFLAGS) $(OPT) -nostartfiles $(LLIBDIR) -Wl,-Map=$(BUILDDIR)/$(PROJECT).map,--cref,--no-warn-mismatch,--library-path=$(RULESPATH),--script=$(LDSCRIPT)$(LDOPT) --specs=nano.specs -u _printf_float -u _scanf_float
 
 # Thumb interwork enabled only if needed because it kills performance.
 ifneq ($(TSRC),)
@@ -142,10 +142,16 @@ else
   LDFLAGS  += -mno-thumb-interwork
 endif
 
+ifeq ($(OS),Windows_NT)
+  DEPPATH = build\$(PROJECT)\.dep
+else
+  DEPPATH = build/$(PROJECT)/.dep
+endif
+
 # Generate dependency information
-ASFLAGS  += -MD -MP -MF .dep/$(@F).d
-CFLAGS   += -MD -MP -MF .dep/$(@F).d
-CPPFLAGS += -MD -MP -MF .dep/$(@F).d
+ASFLAGS  += -MD -MP -MF $(DEPPATH)/$(@F).d
+CFLAGS   += -MD -MP -MF $(DEPPATH)/$(@F).d
+CPPFLAGS += -MD -MP -MF $(DEPPATH)/$(@F).d
 
 # Paths where to search for sources
 VPATH     = $(SRCPATHS)
@@ -305,7 +311,7 @@ $(BUILDDIR)/lib$(PROJECT).a: $(OBJS)
 
 clean:
 	@echo Cleaning
-	-rm -fR .dep $(BUILDDIR)
+	-rm -fR $(DEPPATH) $(BUILDDIR)
 	@echo
 	@echo Done
 
@@ -313,12 +319,12 @@ clean:
 # Include the dependency files, should be the last of the makefile
 #
 ifeq ($(OS),Windows_NT)
-  $(shell cmd /C if not exist ".dep" mkdir ".dep")
+  $(shell cmd /C if not exist "$(DEPPATH)" mkdir "$(DEPPATH)")
 else
-  $(shell mkdir .dep 2>/dev/null)
+  $(shell mkdir $(DEPPATH) 2>/dev/null)
 endif
 
--include $(wildcard .dep/*)
+-include $(wildcard $(DEPPATH)/*)
 
 
 # *** EOF ***

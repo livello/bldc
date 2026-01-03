@@ -4,38 +4,154 @@ LISPBM := ../
 include $(LISPBM)/lispbm.mk
 
 PLATFORM_INCLUDE = -I$(LISPBM)/platform/linux/include
-PLATFORM_SRC     = $(LISPBM)/platform/linux/src/platform_mutex.c
+PLATFORM_SRC     = $(LISPBM)/platform/linux/src/platform_mutex.c \
+                   $(LISPBM)/platform/linux/src/platform_timestamp.c \
+	           $(LISPBM)/platform/linux/src/platform_thread.c
 
-CCFLAGS = -g -Wall -Wconversion -Wsign-compare -pedantic -std=c11
+LBMFLAGS = -DFULL_RTS_LIB \
+	   -DLBM_USE_DYN_MACROS \
+           -DLBM_USE_DYN_LOOPS \
+           -DLBM_USE_DYN_FUNS \
+           -DLBM_USE_DYN_ARRAYS \
+           -DLBM_USE_DYN_DEFSTRUCT \
+           -DLBM_USE_TIME_QUOTA \
+           -DLBM_USE_ERROR_LINENO \
+           -DLBM_USE_MACRO_REST_ARGS
+
+LDFLAGS =
+
+ifeq ($(PLATFORM), macos-arm64)
+  PLATFORM_INCLUDE += -I/opt/homebrew/include/ -I/opt/homebrew/opt/readline/include
+	LDFLAGS += -L/opt/homebrew/opt/readline/lib -L/opt/homebrew/lib
+# To make mmap work on macOS
+	LBMFLAGS += -D_DARWIN_C_SOURCE
+endif
+
+
+# -Wjump-misses-init
+# -fsanitize=address
+CCFLAGS = -g -O2 -Wall -Wextra -Wshadow  -Wconversion -Wsign-compare -pedantic -std=c11 $(LBMFLAGS) -Wno-pointer-to-int-cast -Wno-int-to-pointer-cast -fno-pie -no-pie
 
 PICCFLAGS = -O2 -Wall -Wconversion -pedantic -std=c11
+PI64CCFLAGS = -O2 -Wall -Wconversion -pedantic -std=c11 -DLBM64
 
 LISPBM_SRC += $(LISPBM_EVAL_CPS_SRC)
+
+REPL_SRC= repl.c \
+	  repl_exts.c \
+          crc.c \
+          packet.c \
+          vesc_express_extension_stubs.c \
+	  lbm_gnuplot.c \
+          bldc_extension_stubs.c
+
 
 ifdef HEAP_VIS
 	CCFLAGS += -DVISUALIZE_HEAP
 endif
 
+improved_closures: CCFLAGS += -m32 -DCLEAN_UP_CLOSURES
+improved_closures: repl clean_cl.h
+
+CCFLAGS_COV = -g -coverage -O0 -Wall -Wconversion -Wsign-compare -pedantic -std=c11 -m32 $(LBMFLAGS) -fno-pie -no-pie
+
+LIBS = -lpthread -lreadline -lhistory -lpng
+
 all: CCFLAGS += -m32
-all: repl 
+all: repl
 
-all64: 	CCFLAGS += -DLBM64
-all64: repl 
+cov: CCFLAGS += -m32
+cov: repl_cov
 
 
-install: repl
+all64: CCFLAGS += -DLBM64
+all64: repl
+
+# FreeType backend for high-quality font preparation
+freetype: CCFLAGS += -m32 -DLBM_TTF_USE_FREETYPE $(shell pkg-config --cflags freetype2)
+freetype: LIBS += $(shell pkg-config --libs freetype2)
+freetype: LISPBM_SRC := $(filter-out %/schrift.c,$(LISPBM_SRC))
+freetype: LISPBM_SRC += $(LISPBM)/src/extensions/ttf_backend_freetype.c
+freetype: repl
+
+freetype64: CCFLAGS += -DLBM64 -DLBM_TTF_USE_FREETYPE $(shell pkg-config --cflags freetype2)
+freetype64: LIBS += $(shell pkg-config --libs freetype2)
+freetype64: LISPBM_SRC := $(filter-out %/schrift.c,$(LISPBM_SRC))
+freetype64: LISPBM_SRC += $(LISPBM)/src/extensions/ttf_backend_freetype.c
+freetype64: repl
+
+sdl64: CCFLAGS += -DLBM64 -DWITH_SDL $(shell pkg-config --cflags libpng sdl2 SDL2_image)
+sdl64: LIBS += $(shell pkg-config --libs libpng sdl2 SDL2_image)
+sdl64: REPL_SRC += lbm_sdl.c
+sdl64: repl
+
+sdl: CCFLAGS += -DWITH_SDL -m32 $(shell pkg-config --cflags libpng sdl2 SDL2_image)
+sdl: LIBS += $(shell pkg-config --libs libpng sdl2 SDL2_image)
+sdl: REPL_SRC += lbm_sdl.c
+sdl: repl
+
+sdl_freetype: CCFLAGS += -m32 -DWITH_SDL -DLBM_TTF_USE_FREETYPE $(shell pkg-config --cflags libpng sdl2 SDL2_image freetype2)
+sdl_freetype: LIBS += $(shell pkg-config --libs libpng sdl2 SDL2_image freetype2)
+sdl_freetype: LISPBM_SRC := $(filter-out %/schrift.c,$(LISPBM_SRC))
+sdl_freetype: LISPBM_SRC += $(LISPBM)/src/extensions/ttf_backend_freetype.c
+sdl_freetype: REPL_SRC += lbm_sdl.c
+sdl_freetype: repl
+
+sdl_old_freetype: CCFLAGS += -m32 -DWITH_SDL -DLBM_TTF_USE_FREETYPE $(shell pkg-config --cflags libpng freetype2)
+sdl_old_freetype: LIBS += $(shell pkg-config --libs libpng freetype2)
+sdl_old_freetype: LIBS += -lSDL2 -lSDL2_image
+sdl_old_freetype: LISPBM_SRC := $(filter-out %/schrift.c,$(LISPBM_SRC))
+sdl_old_freetype: LISPBM_SRC += $(LISPBM)/src/extensions/ttf_backend_freetype.c
+sdl_old_freetype: REPL_SRC += lbm_sdl.c
+sdl_old_freetype: repl
+
+sdl_freetype64: CCFLAGS += -DLBM64 -DWITH_SDL -DLBM_TTF_USE_FREETYPE $(shell pkg-config --cflags libpng sdl2 SDL2_image freetype2)
+sdl_freetype64: LIBS += $(shell pkg-config --libs libpng sdl2 SDL2_image freetype2)
+sdl_freetype64: LISPBM_SRC := $(filter-out %/schrift.c,$(LISPBM_SRC))
+sdl_freetype64: LISPBM_SRC += $(LISPBM)/src/extensions/ttf_backend_freetype.c
+sdl_freetype64: REPL_SRC += lbm_sdl.c
+sdl_freetype64: repl
+
+sdl_old: CCFLAGS += -DWITH_SDL -m32
+sdl_old: LIBS += -lSDL2 -lSDL2_image
+sdl_old: REPL_SRC += lbm_sdl.c
+sdl_old: repl
+
+alsa: CCFLAGS += -DWITH_ALSA -m32
+alsa: LIBS += -lasound -lm
+alsa: REPL_SRC += lbm_sound.c lbm_midi.c
+alsa: repl
+
+clean_cl.h: ./scripts/clean.lisp
+	./repl --store_env="clean_cl.env" --src=./scripts/clean.lisp --terminate
+	xxd -i clean_cl.env clean_cl.h
+
+install: all
 	mkdir -p ~/.local/bin
 	cp repl ~/.local/bin/lbm
-
 
 debug: CCFLAGS += -g
 debug: repl
 
-repl: repl.c $(LISPBM_SRC) $(LISPBM_DEPS)
-	gcc $(CCFLAGS) $(LISPBM_SRC) $(PLATFORM_SRC) $(LISPBM_FLAGS) repl.c -o repl $(LISPBM_INC) $(PLATFORM_INCLUDE) -lpthread
+repl: $(REPL_SRC) $(LISPBM_SRC) $(LISPBM_DEPS) $(LISPBM_H)
+	gcc $(CCFLAGS) $(LISPBM_SRC) $(PLATFORM_SRC) $(LISPBM_FLAGS) $(REPL_SRC) -o repl $(LISPBM_INC) $(PLATFORM_INCLUDE) $(LIBS) $(LDFLAGS)
 
-pirepl: repl.c $(LISPBM_SRC) $(LISPBM_DEPS)
-	gcc $(PICCFLAGS) $(LISPBM_SRC) $(PLATFORM_SRC) $(LISPBM_FLAGS) repl.c -o repl $(LISPBM_INC) $(PLATFORM_INCLUDE) -lpthread
+repl_cov: $(REPL_SRC) $(LISPBM_SRC) $(LISPBM_DEPS) $(LISPBM_H)
+	gcc $(CCFLAGS_COV) -DWITH_SDL $(LISPBM_SRC) $(PLATFORM_SRC) lbm_sdl.c $(LISPBM_FLAGS) $(REPL_SRC) -o repl_cov $(LISPBM_INC) $(PLATFORM_INCLUDE) $(LIBS) -lSDL2 -lSDL2_image $(LDFLAGS)
+
+pirepl: $(REPL_SRC) $(LISPBM_SRC) $(LISPBM_DEPS) $(LISPBM_H)
+	gcc $(PICCFLAGS) $(LISPBM_SRC) $(PLATFORM_SRC) $(LISPBM_FLAGS) $(REPL_SRC) -o repl $(LISPBM_INC) $(PLATFORM_INCLUDE) $(LIBS)
+
+pirepl64: $(REPL_SRC) $(LISPBM_SRC) $(LISPBM_DEPS) $(LISPBM_H)
+	gcc $(PI64CCFLAGS) $(LISPBM_SRC) $(PLATFORM_SRC) $(LISPBM_FLAGS) $(REPL_SRC) -o repl $(LISPBM_INC) $(PLATFORM_INCLUDE) $(LIBS)
 
 clean:
-	rm repl
+	rm -f repl
+	rm -f repl_cov
+	rm -f *.gcda
+	rm -f *.gcno
+
+clean_coverage:
+	rm -f coverage/*
+
+

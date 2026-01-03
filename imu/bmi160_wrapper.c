@@ -67,17 +67,6 @@ static bool reset_init_bmi(BMI_STATE *s) {
 	s->sensor.gyro_cfg.range = BMI160_GYRO_RANGE_2000_DPS;
 	s->sensor.gyro_cfg.power = BMI160_GYRO_NORMAL_MODE;
 
-	if(s->filter == IMU_FILTER_LOW){
-		s->sensor.accel_cfg.bw = BMI160_ACCEL_BW_NORMAL_AVG4;
-		s->sensor.gyro_cfg.bw = BMI160_GYRO_BW_NORMAL_MODE;
-	}else if(s->filter == IMU_FILTER_MEDIUM){
-		s->sensor.accel_cfg.bw = BMI160_ACCEL_BW_OSR2_AVG2;
-		s->sensor.gyro_cfg.bw = BMI160_GYRO_BW_OSR2_MODE;
-	}else if(s->filter == IMU_FILTER_HIGH){
-		s->sensor.accel_cfg.bw = BMI160_ACCEL_BW_OSR4_AVG1;
-		s->sensor.gyro_cfg.bw = BMI160_GYRO_BW_OSR4_MODE;
-	}
-
 	if(s->rate_hz <= 25){
 		s->sensor.accel_cfg.odr = BMI160_ACCEL_ODR_25HZ;
 		s->sensor.gyro_cfg.odr = BMI160_GYRO_ODR_25HZ;
@@ -101,6 +90,21 @@ static bool reset_init_bmi(BMI_STATE *s) {
 		s->sensor.gyro_cfg.odr = BMI160_GYRO_ODR_1600HZ;
 	}
 
+	if(s->filter == IMU_FILTER_LOW){
+		s->sensor.accel_cfg.bw = BMI160_ACCEL_BW_NORMAL_AVG4;
+		s->sensor.gyro_cfg.bw = BMI160_GYRO_BW_NORMAL_MODE;
+	}else if(s->filter == IMU_FILTER_MEDIUM){
+		s->sensor.accel_cfg.bw = BMI160_ACCEL_BW_OSR2_AVG2;
+		s->sensor.gyro_cfg.bw = BMI160_GYRO_BW_OSR2_MODE;
+		s->sensor.accel_cfg.odr = fmin(s->sensor.accel_cfg.odr + 1, BMI160_ACCEL_ODR_1600HZ);
+		s->sensor.gyro_cfg.odr = fmin(s->sensor.gyro_cfg.odr + 1, BMI160_GYRO_ODR_3200HZ);
+	}else if(s->filter == IMU_FILTER_HIGH){
+		s->sensor.accel_cfg.bw = BMI160_ACCEL_BW_OSR4_AVG1;
+		s->sensor.gyro_cfg.bw = BMI160_GYRO_BW_OSR4_MODE;
+		s->sensor.accel_cfg.odr = fmin(s->sensor.accel_cfg.odr + 2, BMI160_ACCEL_ODR_1600HZ);
+		s->sensor.gyro_cfg.odr = fmin(s->sensor.gyro_cfg.odr + 2, BMI160_GYRO_ODR_3200HZ);
+	}
+
 	chThdSleepMilliseconds(50);
 	int8_t res = bmi160_set_sens_conf(&(s->sensor));
 	chThdSleepMilliseconds(50);
@@ -119,7 +123,7 @@ static THD_FUNCTION(bmi_thread, arg) {
 
 	s->is_running = true;
 
-	systime_t iteration_timer = chVTGetSystemTime();
+	systime_t iteration_timer = chVTGetSystemTimeX();
 	const systime_t desired_interval = US2ST(1000000 / s->rate_hz);
 
 	for(;;) {
@@ -157,7 +161,7 @@ static THD_FUNCTION(bmi_thread, arg) {
 
 		// Delay between loops
 		iteration_timer += desired_interval;
-		systime_t current_time = chVTGetSystemTime();
+		systime_t current_time = chVTGetSystemTimeX();
 		systime_t remainin_sleep_time = iteration_timer - current_time;
 		if (remainin_sleep_time > 0 && remainin_sleep_time < desired_interval) {
 			// Sleep the remaining time.

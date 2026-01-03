@@ -1,5 +1,5 @@
 /*
-    Copyright 2018, 2020, 2021 Joel Svensson    svenssonjoel@yahoo.se
+    Copyright 2018, 2020, 2021, 2024, 2025 Joel Svensson    svenssonjoel@yahoo.se
 
     This program is free software: you can redistribute it and/or modify
     it under the terms of the GNU General Public License as published by
@@ -21,54 +21,81 @@
 #include "symrepr.h"
 #include "heap.h"
 #include "print.h"
+#include "env.h"
+#include "lbm_memory.h"
 
-lbm_value env_global;
+static lbm_value env_global[GLOBAL_ENV_ROOTS];
 
-int lbm_init_env(void) {
-  env_global = lbm_enc_sym(SYM_NIL);
-  return 1;
+bool lbm_init_env(void) {
+  for (int i = 0; i < GLOBAL_ENV_ROOTS; i ++) {
+    env_global[i] = ENC_SYM_NIL;
+  }
+  return true;
 }
 
-lbm_value *lbm_get_env_ptr(void) {
-  return &env_global;
+lbm_uint lbm_get_global_env_size(void) {
+  lbm_uint n = 0;
+  for (int i = 0; i < GLOBAL_ENV_ROOTS; i ++) {
+    lbm_value curr = env_global[i];
+    while (lbm_is_cons(curr)) {
+      n++;
+      curr = lbm_ref_cell(curr)->cdr;
+    }
+  }
+  return n;
 }
 
-lbm_value lbm_get_env(void) {
+lbm_value *lbm_get_global_env(void) {
   return env_global;
 }
 
-// Copies just the skeleton structure of an environment
-// The new "copy" will have pointers to the original key-val bindings.
-lbm_value lbm_env_copy_shallow(lbm_value env) {
+// Copy the list structure of an environment.
+lbm_value lbm_env_copy_spine(lbm_value env) {
 
-  lbm_value res = lbm_enc_sym(SYM_NIL);
-  lbm_value curr = env;
+  lbm_value r = ENC_SYM_MERROR;
+  lbm_uint len = lbm_list_length(env);
 
-  while (lbm_type_of(curr) == LBM_TYPE_CONS) {
-    lbm_value key = lbm_car(lbm_car(curr));
-    if (lbm_dec_sym(key) != SYM_NIL) {
-      res = lbm_cons(lbm_car(curr), res);
-
-      // Check for "out of memory"
-      if (lbm_type_of(res) == LBM_TYPE_SYMBOL &&
-          lbm_dec_sym(res) == SYM_MERROR) {
-        return res;
-      }
+  lbm_value new_env = lbm_heap_allocate_list(len);
+  if (new_env != ENC_SYM_MERROR) {
+    lbm_value curr_tgt = new_env;
+    lbm_value curr_src = env;
+    // if src environment is invalid, so is tgt.
+    while (lbm_is_cons_rw(curr_tgt) && lbm_is_cons(curr_src)) {
+      lbm_cons_t *tgt_cell = lbm_ref_cell(curr_tgt);
+      lbm_cons_t *src_cell = lbm_ref_cell(curr_src);
+      tgt_cell->car = src_cell->car;
+      curr_tgt = tgt_cell->cdr;
+      curr_src = src_cell->cdr;
     }
-    curr = lbm_cdr(curr);
+    r = new_env;
   }
-  return  res;
+  return r;
 }
 
-// A less safe version of lookup. It should be fine unless env is corrupted.
+// env_lookup that should be safe even in the presence of incorrectly
+// structured env. Could be the case when user manually creates closure.
 bool lbm_env_lookup_b(lbm_value *res, lbm_value sym, lbm_value env) {
-
   lbm_value curr = env;
 
-  if (lbm_is_symbol_nil(sym)) {
-    *res = sym;
-    return true;
+  while (lbm_is_ptr(curr)) {
+    lbm_cons_t *cr = lbm_ref_cell(curr);
+    if (lbm_is_ptr(cr->car)) {
+      lbm_cons_t *pair = lbm_ref_cell(cr->car);
+      if ((pair->car == sym)
+          && (pair->cdr != ENC_SYM_PLACEHOLDER)) {
+        *res = pair->cdr;
+        return true;
+      }
+    }
+    curr = cr->cdr;
   }
+  return false;
+}
+
+bool lbm_global_env_lookup(lbm_value *res, lbm_value sym) {
+  lbm_uint dec_sym = lbm_dec_sym(sym);
+  lbm_uint ix = dec_sym & GLOBAL_ENV_MASK;
+  lbm_value curr = env_global[ix];
 
   while (lbm_is_ptr(curr)) {
     lbm_value c = lbm_ref_cell(curr)->car;
@@ -81,34 +108,26 @@ bool lbm_env_lookup_b(lbm_value *res, lbm_value sym, lbm_value env) {
   return false;
 }
 
-lbm_value lbm_env_lookup(lbm_value sym, lbm_value env) {
-  lbm_value curr = env;
-
-  if(lbm_dec_sym(sym) == SYM_NIL) {
-    return sym;
-  }
-
-  while (lbm_type_of(curr) == LBM_TYPE_CONS) {
-    if (lbm_car(lbm_car(curr)) == sym) {
-      return lbm_cdr(lbm_car(curr));
-    }
-    curr = lbm_cdr(curr);
-  }
-  return lbm_enc_sym(SYM_NOT_FOUND);
-}
-
+// TODO: env set should ideally copy environment if it has to update
+// in place. This has never come up as an issue, the rest of the code
+// must be very well behaved.
 lbm_value lbm_env_set(lbm_value env, lbm_value key, lbm_value val) {
 
   lbm_value curr = env;
   lbm_value new_env;
   lbm_value keyval;
 
-  while(lbm_type_of(curr) == LBM_TYPE_CONS) {
-    if (lbm_car(lbm_car(curr)) == key) {
-      lbm_set_cdr(lbm_car(curr),val);
-      return env;
-    }
-    curr = lbm_cdr(curr);
+  while(lbm_is_cons_rw(curr)) {
+    lbm_cons_t *cell = lbm_ref_cell(curr);
+    lbm_value car_val = cell->car;
+    if (lbm_is_cons_rw(car_val)) { // else corrupt environment.
+      lbm_cons_t *car_cell = lbm_ref_cell(car_val);
+      if (car_cell->car == key) {
+        car_cell->cdr = val;
+        return env;
+      }
+    } // Possibly add a else here to handle corrupt environment.
+    curr = cell->cdr;
   }
 
   keyval = lbm_cons(key,val);
@@ -117,10 +136,6 @@ lbm_value lbm_env_set(lbm_value env, lbm_value key, lbm_value val) {
   }
 
   new_env = lbm_cons(keyval, env);
-  if (lbm_type_of(new_env) == LBM_TYPE_SYMBOL) {
-    return new_env;
-  }
-
   return new_env;
 }
 
@@ -128,45 +143,53 @@ lbm_value lbm_env_modify_binding(lbm_value env, lbm_value key, lbm_value val) {
 
   lbm_value curr = env;
 
-  while (lbm_type_of(curr) == LBM_TYPE_CONS) {
-    if (lbm_car(lbm_car(curr)) == key) {
-      lbm_set_cdr(lbm_car(curr), val);
-      return env;
-    }
-    curr = lbm_cdr(curr);
-
+  while (lbm_is_cons_rw(curr)) {
+    lbm_cons_t *curr_cell = lbm_ref_cell(curr);
+    lbm_value car_val = curr_cell->car;
+    if (lbm_is_cons_rw(car_val)) {
+      lbm_cons_t *car_cell = lbm_ref_cell(car_val);
+      if (car_cell->car == key) {
+        car_cell->cdr = val;
+        return env;
+      }
+    } // Else environment is invalid.
+    curr = curr_cell->cdr;
   }
-  return lbm_enc_sym(SYM_NOT_FOUND);
+  return ENC_SYM_NOT_FOUND;
 }
 
-lbm_value lbm_env_build_params_args(lbm_value params,
-                            lbm_value args,
-                            lbm_value env0) {
-  lbm_value curr_param = params;
-  lbm_value curr_arg = args;
 
-  // TODO: This should be checked outside of this function.
-  //
-  if (lbm_list_length(params) != lbm_list_length(args)) { // programmer error
-    return lbm_enc_sym(SYM_FATAL_ERROR);
+// TODO: Drop binding should really return a new environment
+//       where the drop key/val is missing.
+//
+//       The internal use of drop_binding in fundamental undefine
+//       is probably fine as we do not generally treat environments
+//       as first order values. If we did, drop_binding is too destructive!
+lbm_value lbm_env_drop_binding(lbm_value env, lbm_value key) {
+
+  if (lbm_is_cons_rw(env)) {
+    lbm_cons_t *cell = lbm_ref_cell(env);
+
+    // If key is first in env
+    if (lbm_car(cell->car) == key) {
+      return cell->cdr; // New head of env
+    }
+
+    lbm_cons_t *prev = cell;
+    lbm_value curr = cell->cdr;
+
+    while (lbm_is_cons_rw(curr)) {
+      cell = lbm_ref_cell(curr);
+      if (lbm_is_cons_rw(cell->car)) {
+        lbm_cons_t *car_cell = lbm_ref_cell(cell->car);
+        if (car_cell->car == key) {
+          prev->cdr = cell->cdr; // removes "cell" from list
+          return env;
+        }
+      } // the unhandled else here would be an invalid environment.
+      prev = cell;
+      curr = cell->cdr;
+    }
   }
-
-  lbm_value env = env0;
-  while (lbm_type_of(curr_param) == LBM_TYPE_CONS) {
-
-    lbm_value entry = lbm_cons(lbm_car(curr_param), lbm_car(curr_arg));
-    if (lbm_type_of(entry) == LBM_TYPE_SYMBOL &&
-        lbm_dec_sym(entry) == SYM_MERROR)
-      return lbm_enc_sym(SYM_MERROR);
-
-    env = lbm_cons(entry,env);
-
-    if (lbm_type_of(env) == LBM_TYPE_SYMBOL &&
-        lbm_dec_sym(env) == SYM_MERROR)
-      return lbm_enc_sym(SYM_MERROR);
-
-    curr_param = lbm_cdr(curr_param);
-    curr_arg   = lbm_cdr(curr_arg);
-  }
-  return env;
+  return ENC_SYM_NOT_FOUND;
 }

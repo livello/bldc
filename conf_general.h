@@ -21,24 +21,12 @@
 #define CONF_GENERAL_H_
 
 // Firmware version
-#define FW_VERSION_MAJOR			6
+#define FW_VERSION_MAJOR			7
 #define FW_VERSION_MINOR			00
 // Set to 0 for building a release and iterate during beta test builds
-#define FW_TEST_VERSION_NUMBER		44
+#define FW_TEST_VERSION_NUMBER		1
 
 #include "datatypes.h"
-
-// Settings and parameters to override
-//#define VIN_R1						33000.0
-//#define VIN_R1						39200.0
-//#define VIN_R2						2200.0
-//#define CURRENT_AMP_GAIN			10.0
-//#define CURRENT_SHUNT_RES			0.005
-//#define WS2811_ENABLE				1
-//#define WS2811_TEST					1
-//#define CURR1_DOUBLE_SAMPLE			0
-//#define CURR2_DOUBLE_SAMPLE			0
-//#define AS5047_USE_HW_SPI_PINS		1
 
 // Disable hardware limits on configuration parameters
 //#define DISABLE_HW_LIMITS
@@ -96,13 +84,6 @@
 //#define APP_CUSTOM_TO_USE			"app_motor_heater.c"
 //#include "er/app_erockit_conf_v2.h"
 //#include "finn/app_finn_az_conf.h"
-//#include "vccu/app_vccu_conf.h"
-//#include "pitch/app_pitch_conf.h"
-
-// CAN-plotter
-//#define APP_CUSTOM_TO_USE			"app_plot_can.c"
-//#define APPCONF_APP_TO_USE			APP_CUSTOM
-//#define APPCONF_CAN_BAUD_RATE		CAN_BAUD_75K
 
 #include "hw.h"
 #include "mcconf_default.h"
@@ -128,12 +109,6 @@
 #endif
 
 /*
- * Settings for the external LEDs (hardcoded for now)
- */
-#define LED_EXT_BATT_LOW			28.0
-#define LED_EXT_BATT_HIGH			33.0
-
-/*
  * Servo output driver
  */
 #define SERVO_OUT_PULSE_MIN_US		1000	// Minimum pulse length in microseconds
@@ -145,6 +120,12 @@
 
 // Current ADC to amperes factor
 #define FAC_CURRENT					((V_REG / 4095.0) / (CURRENT_SHUNT_RES * CURRENT_AMP_GAIN))
+#define FAC_CURRENT1				(FAC_CURRENT * CURRENT_CAL1)
+#define FAC_CURRENT2				(FAC_CURRENT * CURRENT_CAL2)
+#define FAC_CURRENT3				(FAC_CURRENT * CURRENT_CAL3)
+#define FAC_CURRENT1_M2				(FAC_CURRENT * CURRENT_CAL1_M2)
+#define FAC_CURRENT2_M2				(FAC_CURRENT * CURRENT_CAL2_M2)
+#define FAC_CURRENT3_M2				(FAC_CURRENT * CURRENT_CAL3_M2)
 
 #define VOLTAGE_TO_ADC_FACTOR	( VIN_R2 / (VIN_R2 + VIN_R1) ) * ( 4096.0 / V_REG )
 
@@ -189,6 +170,52 @@
 extern bool conf_general_permanent_nrf_found;
 extern volatile backup_data g_backup;
 
+// FOC Profiling
+#define FOC_PROFILE_EN
+
+#ifdef FOC_PROFILE_EN
+
+//#define FOC_PROFILE_LOCATIONS 50
+#define FOC_PROFILE_LOCATIONS 10
+
+//#define FOC_PROFILE_LINE_FINE() FOC_PROFILE_LINE()
+#define FOC_PROFILE_LINE_FINE()
+
+typedef struct {
+	uint32_t t_start;
+	bool running;
+	bool trigger_start;
+	int ind;
+	int line[FOC_PROFILE_LOCATIONS];
+	uint32_t time[FOC_PROFILE_LOCATIONS];
+} foc_profile;
+
+extern foc_profile g_foc_profile;
+
+#define FOC_PROFILE_TRIGGER() g_foc_profile.trigger_start = true;
+
+#define FOC_PROFILE_BEGIN() \
+		g_foc_profile.running = false; \
+		if (g_foc_profile.trigger_start && !is_v7) { \
+			g_foc_profile.t_start = timer_time_now(); \
+			g_foc_profile.running = true; \
+			g_foc_profile.trigger_start = false; \
+			g_foc_profile.ind = 0; \
+		}
+
+#define FOC_PROFILE_LINE() \
+		if (g_foc_profile.running) { \
+			g_foc_profile.line[g_foc_profile.ind] = __LINE__; \
+			g_foc_profile.time[g_foc_profile.ind++] = timer_time_now(); \
+		}
+
+#else
+#define FOC_PROFILE_TRIGGER()
+#define FOC_PROFILE_BEGIN()
+#define FOC_PROFILE_LINE()
+#define FOC_PROFILE_LINE_FINE()
+#endif
+
 // Functions
 void conf_general_init(void);
 bool conf_general_store_backup_data(void);
@@ -201,20 +228,23 @@ bool conf_general_store_app_configuration(app_configuration *conf);
 void conf_general_read_mc_configuration(mc_configuration *conf, bool is_motor_2);
 bool conf_general_store_mc_configuration(mc_configuration *conf, bool is_motor_2);
 bool conf_general_detect_motor_param(float current, float min_rpm, float low_duty,
-		float *int_limit, float *bemf_coupling_k, int8_t *hall_table, int *hall_res);
+									 float *int_limit, float *bemf_coupling_k, int8_t *hall_table, int *hall_res);
 bool conf_general_measure_flux_linkage(float current, float duty,
-		float min_erpm, float res, float *linkage);
+									   float min_erpm, float res, float *linkage);
 uint8_t conf_general_calculate_deadtime(float deadtime_ns, float core_clock_freq);
-bool conf_general_measure_flux_linkage_openloop(float current, float duty,
-		float erpm_per_sec, float res, float ind, float *linkage,
-		float *linkage_undriven, float *undriven_samples);
+int conf_general_measure_flux_linkage_openloop(float current, float duty,
+											   float erpm_per_sec, float res, float ind, float *linkage,
+											   float *linkage_undriven, float *undriven_samples, bool *result,
+											   float *enc_offset, float *enc_ratio, bool *enc_inverted);
 int conf_general_autodetect_apply_sensors_foc(float current,
-		bool store_mcconf_on_success, bool send_mcconf_on_success);
+											  bool store_mcconf_on_success, bool send_mcconf_on_success, int *result);
 void conf_general_calc_apply_foc_cc_kp_ki_gain(mc_configuration *mcconf, float tc);
 int conf_general_detect_apply_all_foc(float max_power_loss,
-		bool store_mcconf_on_success, bool send_mcconf_on_success);
+									  bool store_mcconf_on_success, bool send_mcconf_on_success);
 int conf_general_detect_apply_all_foc_can(bool detect_can, float max_power_loss,
-		float min_current_in, float max_current_in, float openloop_rpm, float sl_erpm);
+										  float min_current_in, float max_current_in,
+										  float openloop_rpm, float sl_erpm,
+										  void(*reply_func)(unsigned char* data, unsigned int len));
 
 
 #endif /* CONF_GENERAL_H_ */

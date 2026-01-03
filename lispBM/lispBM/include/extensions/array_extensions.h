@@ -20,6 +20,13 @@
 
 #include <stdbool.h>
 
-extern bool lbm_array_extensions_init(void);
+#ifdef __cplusplus
+extern "C" {
+#endif
 
+void lbm_array_extensions_init(void);
+
+#ifdef __cplusplus
+}
+#endif
 #endif

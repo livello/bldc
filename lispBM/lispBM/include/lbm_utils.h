@@ -19,8 +19,20 @@
 #ifndef LBM_UTILS_H_
 #define LBM_UTILS_H_ 
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #ifndef M_PI
 #define M_PI 3.14159265358979323846
+#endif
+
+#ifndef M_PI_2
+#define M_PI_2 1.57079632679
+#endif
+
+#ifndef M_3PI_2
+#define M_3PI_2 4.71238898038469
 #endif
 
 #define DEG2RAD_f(deg) ((deg) * (float)(M_PI / 180.0))
@@ -35,4 +47,18 @@
 
 #define CMP(a,b) (((a) > (b)) - ((a) < (b)));
 
+static inline bool str_eq(char *str1, char *str2) {
+  if (*str1 != *str2) return false;
+  if (*str1 == 0) return true;
+
+  for (;;) {
+    ++str1; ++str2;
+    if (*str1 != *str2) return false;
+    if (*str1 == 0) return true;
+  }
+}
+
+#ifdef __cplusplus
+}
+#endif
 #endif
